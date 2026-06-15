@@ -9,7 +9,7 @@ import sys
 sys.path.insert(0, "/Workspace/Repos/<your-repo-path>")  # update to your workspace path
 from prompts.trust_extraction import SYSTEM_PROMPT, build_prompt
 
-CATALOG = "YOUR_CATALOG"   # same as 00_setup.py
+CATALOG = "workspace"   # same as 00_setup.py
 SCHEMA = "facilityiq"
 MODEL = "databricks-meta-llama-3-1-70b-instruct"
 FALLBACK_MODEL = "databricks-dbrx-instruct"

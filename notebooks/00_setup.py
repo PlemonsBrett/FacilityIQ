@@ -1,8 +1,8 @@
 # Databricks notebook — run on a cluster, not locally
 # Configure these for your workspace
-CATALOG = "YOUR_CATALOG"   # e.g. "main"
+CATALOG = "workspace"   # the catalog where facilityiq schema will live
 SCHEMA = "facilityiq"
-CSV_PATH = "dbfs:/FileStore/facilityiq/facilities.csv"  # upload FDR CSV here
+SOURCE_TABLE = "databricks_virtue_foundation_dataset_dais_2026.virtue_foundation_dataset.facilities"
 
 import re
 for _var, _val in [("CATALOG", CATALOG), ("SCHEMA", SCHEMA)]:
@@ -12,33 +12,34 @@ spark.sql(f"USE CATALOG {CATALOG}")
 spark.sql(f"CREATE SCHEMA IF NOT EXISTS {SCHEMA}")
 spark.sql(f"USE SCHEMA {SCHEMA}")
 
-# Load CSV — infers all 51 FDR columns
-raw_df = (spark.read
-    .format("csv")
-    .option("header", "true")
-    .option("inferSchema", "true")
-    .option("multiLine", "true")
-    .option("escape", '"')
-    .load(CSV_PATH))
-
-print(f"CSV columns ({len(raw_df.columns)}): {raw_df.columns}")
-assert "facility_id" in raw_df.columns, "facility_id column not found — check CSV"
-raw_count = raw_df.count()
-print(f"CSV row count: {raw_count}")
-assert raw_count > 0, f"CSV loaded 0 rows from {CSV_PATH} — check the path and file"
-
-# Write to facilities_raw (overwrite on re-run is safe — append-only in prod)
-(raw_df.write
-    .format("delta")
-    .mode("overwrite")
-    .option("overwriteSchema", "true")
-    .saveAsTable(f"{CATALOG}.{SCHEMA}.facilities_raw"))
-
-# Enable CDF for synced tables (required for Triggered sync mode)
+# Create normalized facilities_raw from the hackathon Delta Sharing table.
+# Column renames align the hackathon schema with FacilityIQ's standard names
+# so all downstream code (pipeline, API, UI) uses consistent field names.
 spark.sql(f"""
-  ALTER TABLE {CATALOG}.{SCHEMA}.facilities_raw
-  SET TBLPROPERTIES (delta.enableChangeDataFeed = true)
+  CREATE OR REPLACE TABLE {CATALOG}.{SCHEMA}.facilities_raw
+  USING DELTA
+  TBLPROPERTIES (delta.enableChangeDataFeed = true)
+  AS SELECT
+    unique_id               AS facility_id,
+    name                    AS facility_name,
+    organization_type       AS facility_type,
+    address_stateOrRegion   AS state,
+    address_city            AS district,
+    description,
+    capability,
+    procedure,
+    equipment,
+    capacity,
+    yearEstablished         AS year_established,
+    latitude,
+    longitude,
+    specialties
+  FROM {SOURCE_TABLE}
 """)
+
+raw_count = spark.table(f"{CATALOG}.{SCHEMA}.facilities_raw").count()
+print(f"facilities_raw: {raw_count} rows")
+assert raw_count > 0, f"CTAS produced 0 rows — check source table: {SOURCE_TABLE}"
 
 # Create trust signals table
 spark.sql(f"""
