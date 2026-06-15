@@ -1,5 +1,4 @@
 # Databricks notebook source
-# MAGIC %md # FacilityIQ — Trust Extraction Pipeline
 import json
 import time
 from datetime import datetime, timezone
