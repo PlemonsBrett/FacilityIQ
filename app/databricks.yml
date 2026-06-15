@@ -36,7 +36,7 @@ targets:
     mode: production
     workspace:
       host: https://dbc-9924376b-eaa9.cloud.databricks.com
-      root_path: /Workspace/prod/${bundle.name}/files
+      root_path: /Workspace/prod/${bundle.name}
 
     variables:
       postgres_branch: projects/facilityiq/branches/production
