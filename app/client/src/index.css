@@ -1,5 +1,137 @@
 @import "@databricks/appkit-ui/styles.css";
 
+/* FacilityIQ theme tokens — dark by default, toggled via [data-theme="light"] on <html> */
+/*
+  WCAG AA target: 4.5:1 for body text, 3:1 for large/UI text.
+  Dark bg #0b2026 (L≈0.012). Light bg #f1f5f9 (L≈0.90).
+  Trust colors use separate vars so light mode can swap to darker hues.
+*/
+:root {
+  --fiq-bg: #0b2026;
+  --fiq-bg-surface: #081519;
+  --fiq-bg-input: rgba(255,255,255,0.06);
+  --fiq-bg-hover: rgba(255,255,255,0.05);
+  --fiq-bg-expanded: rgba(0,0,0,0.18);
+  --fiq-bg-cell: #0b2026;
+  --fiq-border: rgba(255,255,255,0.08);
+  --fiq-border-md: rgba(255,255,255,0.09);
+  --fiq-border-strong: rgba(255,255,255,0.14);
+  --fiq-text: #ffffff;                           /* 16.8:1 */
+  --fiq-text-muted: rgba(255,255,255,0.9);       /* ~14:1  */
+  --fiq-text-dim: rgba(255,255,255,0.75);        /* ~10:1  */
+  --fiq-text-faint: rgba(255,255,255,0.65);      /* ~7.2:1 */
+  --fiq-text-subdued: rgba(255,255,255,0.6);     /* ~6.5:1 */
+  --fiq-text-faintest: rgba(255,255,255,0.55);   /* ~5.7:1 */
+  --fiq-text-code: rgba(255,255,255,0.55);       /* ~5.7:1 */
+  --fiq-text-light: rgba(255,255,255,0.82);      /* ~11:1  */
+  --fiq-evidence-border: rgba(255,255,255,0.22);
+  /* Trust score colors — vivid on dark bg */
+  --fiq-trust-high: #4ade80;
+  --fiq-trust-med: #fbbf24;
+  --fiq-trust-low: #f87171;
+  --fiq-trust-null: rgba(255,255,255,0.55);
+  /* Insufficient data badge */
+  --fiq-insufficient-bg: rgba(251,191,36,0.15);
+  --fiq-insufficient-text: #fbbf24;
+  /* GuidedAnalysis — highlight + bubble colors (theme-adaptive) */
+  --ga-hl-e-bg: rgba(99,179,237,0.15);
+  --ga-hl-e-color: #3730a3;
+  --ga-hl-e-underline: rgba(99,179,237,0.5);
+  --ga-hl-c-bg: rgba(251,191,36,0.15);
+  --ga-hl-c-color: #92400e;
+  --ga-hl-c-underline: rgba(251,191,36,0.55);
+  --ga-bubble-e-bg: #ffffff;
+  --ga-bubble-e-border: #c7d2fe;
+  --ga-bubble-e-tail: #ffffff;
+  --ga-bubble-c-bg: #fffbeb;
+  --ga-bubble-c-border: #fde68a;
+  --ga-bubble-c-tail: #fffbeb;
+}
+
+[data-theme="light"] {
+  --fiq-bg: #f1f5f9;
+  --fiq-bg-surface: #e2e8f0;
+  --fiq-bg-input: rgba(15,23,42,0.06);
+  --fiq-bg-hover: rgba(15,23,42,0.06);
+  --fiq-bg-expanded: rgba(15,23,42,0.04);
+  --fiq-bg-cell: #ffffff;
+  --fiq-border: rgba(15,23,42,0.12);
+  --fiq-border-md: rgba(15,23,42,0.12);
+  --fiq-border-strong: rgba(15,23,42,0.22);
+  --fiq-text: #0f172a;      /* slate-900  17:1 */
+  --fiq-text-muted: #1e293b;  /* slate-800  14:1 */
+  --fiq-text-dim: #334155;    /* slate-700   9:1 */
+  --fiq-text-faint: #475569;  /* slate-600   6:1 */
+  --fiq-text-subdued: #475569;
+  --fiq-text-faintest: #4b5563; /* gray-600  5.7:1 */
+  --fiq-text-code: #475569;
+  --fiq-text-light: #374151;  /* gray-700   7.8:1 */
+  --fiq-evidence-border: rgba(15,23,42,0.28);
+  /* Trust score colors — darker hues for contrast on light bg */
+  --fiq-trust-high: #16a34a;  /* green-600   4.7:1 */
+  --fiq-trust-med: #b45309;   /* amber-700   5.8:1 */
+  --fiq-trust-low: #dc2626;   /* red-600     5.3:1 */
+  --fiq-trust-null: #64748b;  /* slate-500   4.0:1 (UI element only) */
+  /* Insufficient data badge — dark text on amber tint */
+  --fiq-insufficient-bg: rgba(251,191,36,0.18);
+  --fiq-insufficient-text: #92400e; /* amber-800  ~7:1 */
+  --ga-hl-e-bg: rgba(79,70,229,0.1);
+  --ga-hl-e-color: #3730a3;
+  --ga-hl-e-underline: rgba(79,70,229,0.4);
+  --ga-hl-c-bg: rgba(180,83,9,0.1);
+  --ga-hl-c-color: #92400e;
+  --ga-hl-c-underline: rgba(180,83,9,0.4);
+  --ga-bubble-e-bg: #ffffff;
+  --ga-bubble-e-border: #c7d2fe;
+  --ga-bubble-e-tail: #ffffff;
+  --ga-bubble-c-bg: #fffbeb;
+  --ga-bubble-c-border: #fde68a;
+  --ga-bubble-c-tail: #fffbeb;
+}
+
+/* Themed scrollbars */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--fiq-bg-surface); }
+::-webkit-scrollbar-thumb { background: var(--fiq-border-strong); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--fiq-text-faintest); }
+html { scrollbar-width: thin; scrollbar-color: var(--fiq-border-strong) var(--fiq-bg-surface); }
+
+/* ── GuidedAnalysis bubble system ── */
+.ga-bubble { border-radius: 12px; }
+.ga-bubble-e {
+  background: var(--ga-bubble-e-bg);
+  border: 1.5px solid var(--ga-bubble-e-border);
+  filter: drop-shadow(0 6px 16px rgba(79,70,229,.15)) drop-shadow(0 2px 4px rgba(0,0,0,.07));
+}
+.ga-bubble-c {
+  background: var(--ga-bubble-c-bg);
+  border: 1.5px solid var(--ga-bubble-c-border);
+  filter: drop-shadow(0 6px 16px rgba(245,158,11,.18)) drop-shadow(0 2px 4px rgba(0,0,0,.07));
+}
+.ga-bubble-body {
+  padding: 10px 13px; font-size: 11px; line-height: 1.55;
+  display: flex; align-items: flex-start; gap: 7px;
+  color: var(--fiq-text-muted);
+}
+.ga-bubble-icon { font-size: 12px; flex-shrink: 0; }
+.ga-bubble-text { flex: 1; }
+.ga-score-chip {
+  display: inline-block; font-size: 9px; font-weight: 800;
+  padding: 1px 6px; border-radius: 4px; margin-left: 4px; vertical-align: middle;
+}
+.ga-score-high { background: rgba(74,222,128,.15); color: var(--fiq-trust-high); border: 1px solid rgba(74,222,128,.3); }
+.ga-score-med  { background: rgba(251,191,36,.15);  color: var(--fiq-trust-med);  border: 1px solid rgba(251,191,36,.3); }
+.ga-score-low  { background: rgba(248,113,113,.15); color: var(--fiq-trust-low);  border: 1px solid rgba(248,113,113,.3); }
+.ga-tail { position: absolute; width: 0; height: 0; }
+@keyframes ga-pop {
+  from { opacity: 0; transform: scale(0.88); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+/* Sidebar tooltip hover */
+.fiq-sidebar-btn .fiq-sidebar-tip { opacity: 0; transition: opacity 0.15s; }
+.fiq-sidebar-btn:hover .fiq-sidebar-tip { opacity: 1; }
+
 :root {
   /* --radius: 0.625rem;
   --background: oklch(1 0 0);
