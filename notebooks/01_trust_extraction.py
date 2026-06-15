@@ -9,6 +9,7 @@ from pyspark.sql import Row
 # Add repo root to path so we can import from prompts/
 sys.path.insert(0, os.path.abspath(".."))
 from prompts.trust_extraction import SYSTEM_PROMPT, build_prompt, build_penalty_lookups
+from prompts.trust_signals_writer import create_trust_signals_table, write_signals
 
 CATALOG = "workspace"   # same as 00_setup.py
 SCHEMA = "facilityiq"
@@ -110,6 +111,9 @@ facilities_df = spark.sql(f"""
 
 print(f"Facilities to process: {len(facilities_df)}")
 
+# Ensure the target table exists with the correct schema and partitioning
+create_trust_signals_table(spark, CATALOG, SCHEMA)
+
 all_signals = []
 for i, row in facilities_df.iterrows():
     fid = row["facility_id"]
@@ -120,18 +124,13 @@ for i, row in facilities_df.iterrows():
     all_signals.extend(signals)
 
     if len(all_signals) >= BATCH_SIZE:
-        batch_df = spark.createDataFrame(all_signals)
-        batch_df.write.format("delta").mode("append").saveAsTable(
-            f"{CATALOG}.{SCHEMA}.facilities_trust_signals")
-        print(f"  Wrote batch at facility {i+1}/{len(facilities_df)}")
+        written = write_signals(spark, all_signals, CATALOG, SCHEMA)
+        print(f"  Wrote {written} signals at facility {i+1}/{len(facilities_df)}")
         all_signals = []
         time.sleep(1)
 
 # Write any remaining signals
-if all_signals:
-    batch_df = spark.createDataFrame(all_signals)
-    batch_df.write.format("delta").mode("append").saveAsTable(
-        f"{CATALOG}.{SCHEMA}.facilities_trust_signals")
+write_signals(spark, all_signals, CATALOG, SCHEMA)
 
 total = spark.sql(f"SELECT COUNT(*) as n FROM {CATALOG}.{SCHEMA}.facilities_trust_signals").collect()[0]["n"]
 errors = spark.sql(f"SELECT COUNT(*) as n FROM {CATALOG}.{SCHEMA}.extraction_errors").collect()[0]["n"]
