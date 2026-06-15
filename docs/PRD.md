@@ -1,12 +1,29 @@
 # FacilityIQ — Product Requirements Document
 
-**Version:** 1.0  
+**Version:** 1.1  
 **Date:** June 15, 2026  
 **Track:** Facility Trust Desk  
 **Hackathon:** Databricks Data + AI Summit 2026  
+**Organizers:** Virtue Foundation · Databricks · Actionable Data Initiative  
 **Status:** Active
 
- ---
+---
+
+## 0. Context & Product Vision
+
+This hackathon is organized by the **Virtue Foundation**, builders of **VF Match** — a production healthcare intelligence platform that maps facilities, surfaces medical deserts, and connects volunteers to underserved regions. VF Match already does facility discovery well: geographic search, Hospital Coverage Index scoring, facility listings with contact details, and a Medical Deserts layer for population-level gap analysis.
+
+**What VF Match doesn't have is trust.**
+
+It can show you a facility. It cannot tell you whether that facility can actually do what it claims. For India specifically — 10,000 records with 25% capacity coverage, free-text capability claims that contradict structured fields, and no mechanism to verify any of it — this gap is a patient safety issue.
+
+**FacilityIQ is the trust layer VF Match is missing for India.**
+
+> *"VF Match shows you facilities. FacilityIQ tells you whether to trust them."*
+
+Every score cites the exact text that produced it. Every uncertainty is surfaced visibly. Every analyst decision persists. The result is a planner who can act on evidence, not assumption — and a dataset that gets smarter with every review.
+
+---
 
 ## 1. Problem Statement
 
@@ -21,7 +38,7 @@ Today, a planner has no systematic way to:
 
 The result is decisions made on weak or unverified evidence — with real patient outcomes at stake.
 
- ---
+---
 
 ## 2. Goals
 
@@ -31,7 +48,7 @@ The result is decisions made on weak or unverified evidence — with real patien
 - **G4:** Persist analyst work (notes, overrides, shortlists, flags) across sessions via Delta Lake
 - **G5:** Flag claim contradictions — where structured fields and free text conflict — as a first-class insight
 
- ---
+---
 
 ## 3. Non-Goals
 
@@ -41,7 +58,7 @@ The result is decisions made on weak or unverified evidence — with real patien
 - **NG4:** Geographic map visualization — out of scope for v1
 - **NG5:** Integration with external data sources beyond the provided FDR dataset
 
- ---
+---
 
 ## 4. User Persona
 
@@ -50,20 +67,20 @@ The result is decisions made on weak or unverified evidence — with real patien
 > *"I need to know if I can trust what this facility says it can do. I don't have time to read 10,000 records, but I can't afford to refer a patient somewhere that can't actually treat them."*
 
 | Attribute | Detail |
-| --- | --- |
+|---|---|
 | Role | Healthcare facility planner / procurement analyst |
 | Technical level | Non-technical — comfortable with Excel, not SQL |
 | Primary goal | Identify trustworthy facilities for referral or resource allocation |
 | Pain point | Cannot verify facility claims; dataset is inconsistent and hard to read |
 | Session behavior | Searches by specialty or geography, builds shortlists, adds notes, resumes work across days |
 
- ---
+---
 
 ## 5. Core User Flows
 
 ### Flow 1: Facility Search & Trust Overview
 
-```plaintext
+```
 Maya opens FacilityIQ
   → Enters search query ("dialysis centers, Maharashtra")
   → Sees ranked list of matching facilities with:
@@ -75,7 +92,7 @@ Maya opens FacilityIQ
 
 ### Flow 2: Facility Trust Scorecard
 
-```plaintext
+```
 Maya views a facility detail page
   → Sees Trust Score broken into dimensions:
       - Capability Trust
@@ -90,7 +107,7 @@ Maya views a facility detail page
 
 ### Flow 3: Analyst Workbench (Persist Actions)
 
-```plaintext
+```
 Maya takes action on a facility:
   → Adds a note ("Follow up — ICU claim needs verification")
   → Overrides a trust score with a reason ("Verified via phone — confirmed")
@@ -110,14 +127,14 @@ Maya sees a red contradiction badge on a facility
   → Maya flags for manual review
 ```
 
- ---
+---
 
 ## 6. Functional Requirements
 
 ### 6.1 Search & Filter
 
 | ID | Requirement | Priority |
-| --- | --- | --- |
+|---|---|---|
 | F-01 | Full-text search across facility name, location, specialty, and capability fields | P0 |
 | F-02 | Filter by state/region, facility type, trust score tier | P0 |
 | F-03 | Sort by trust score (desc), completeness, or name | P0 |
@@ -126,7 +143,7 @@ Maya sees a red contradiction badge on a facility
 ### 6.2 Trust Scoring
 
 | ID | Requirement | Priority |
-| --- | --- | --- |
+|---|---|---|
 | F-05 | Per-facility trust score (0–100) computed across capability, equipment, and procedure dimensions | P0 |
 | F-06 | Each dimension score is traceable to at least one cited sentence from the source text | P0 |
 | F-07 | Fields with <50% dataset coverage (capacity, year_established) must display explicit uncertainty badge — score suppressed or labeled "Insufficient Data" | P0 |
@@ -136,7 +153,7 @@ Maya sees a red contradiction badge on a facility
 ### 6.3 Evidence Display
 
 | ID | Requirement | Priority |
-| --- | --- | --- |
+|---|---|---|
 | F-10 | Every trust signal must display the exact sentence(s) from source text that produced it | P0 |
 | F-11 | Evidence quotes are highlighted inline — distinct visual treatment from analyst notes | P0 |
 | F-12 | Source field name (e.g., `description`, `capability`) must be labeled on each citation | P1 |
@@ -144,7 +161,7 @@ Maya sees a red contradiction badge on a facility
 ### 6.4 Analyst Workbench (Persistence)
 
 | ID | Requirement | Priority |
-| --- | --- | --- |
+|---|---|---|
 | F-13 | Analyst can add free-text notes per facility | P0 |
 | F-14 | Analyst can override any dimension trust score with a mandatory reason field | P0 |
 | F-15 | Analyst can add/remove facilities from a named shortlist | P0 |
@@ -152,30 +169,30 @@ Maya sees a red contradiction badge on a facility
 | F-17 | All actions persist to Delta Lake — survive page refresh and new session | P0 |
 | F-18 | Workbench state (shortlists, notes, flags) visible in search results list view | P1 |
 
- ---
+---
 
 ## 7. Non-Functional Requirements
 
 | ID | Requirement |
-| --- | --- |
+|---|---|
 | NF-01 | App runs on Databricks Free Edition — no paid compute dependencies |
 | NF-02 | Facility detail page loads within 3 seconds for cached trust signals |
 | NF-03 | LLM extraction batch job completes for all 10k facilities within available hack time |
 | NF-04 | UI is usable without any SQL, JSON, or technical knowledge |
 | NF-05 | App is publicly accessible for demo purposes during judging window |
 
- ---
+---
 
 ## 8. Success Metrics (Judging Alignment)
 
 | Judging Criterion | How FacilityIQ Addresses It |
-| --- | --- |
+|---|---|
 | **Product judgment** | Clear persona (Maya), single coherent workflow, no technical leakage into UI |
 | **Evidence & uncertainty** | Every score cites source text; uncertainty is a first-class visual element, not hidden |
 | **Technical execution** | Delta persistence, LLM batch pipeline, Databricks App stack used end-to-end |
 | **Ambition** | Claim contradiction detection is a non-trivial, novel insight layer on top of raw scoring |
 
- ---
+---
 
 ## 9. Out of Scope (v1)
 
