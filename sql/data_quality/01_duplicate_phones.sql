@@ -1,4 +1,8 @@
 -- Duplicate phone numbers across facilities.
+-- Severity and penalty_points are percentile-driven across the full duplicate distribution:
+--   top 10%  (pct_rank >= 0.90) → critical → 50 pts
+--   next 30% (pct_rank >= 0.60) → medium   → 30 pts
+--   bottom 60%                  → low      → 10 pts
 -- Run directly in Databricks SQL. This does not create or replace any table.
 
 WITH exploded_phones AS (
@@ -26,28 +30,36 @@ dupes AS (
     AND length(phone_normalized) >= 7
   GROUP BY phone_normalized
   HAVING COUNT(DISTINCT unique_id) > 1
+),
+ranked AS (
+  SELECT
+    phone_normalized,
+    duplicate_count,
+    PERCENT_RANK() OVER (ORDER BY duplicate_count) AS pct_rank
+  FROM dupes
 )
 SELECT
-  e.raw_phone,
-  e.phone_normalized,
-  d.duplicate_count,
-  CASE
-    WHEN d.duplicate_count >= 6 THEN 'critical'
-    WHEN d.duplicate_count >= 2 THEN 'high'
-    ELSE 'low'
-  END AS severity,
-  CASE
-    WHEN d.duplicate_count >= 6 THEN 50
-    WHEN d.duplicate_count >= 2 THEN 30
-    ELSE 5
-  END AS penalty_points,
   e.unique_id,
   e.name,
   e.facilityTypeId,
   e.address_city,
   e.address_stateOrRegion,
-  e.address_country
+  e.address_country,
+  e.raw_phone,
+  e.phone_normalized,
+  r.duplicate_count,
+  r.pct_rank,
+  CASE
+    WHEN r.pct_rank >= 0.90 THEN 'critical'
+    WHEN r.pct_rank >= 0.60 THEN 'medium'
+    ELSE 'low'
+  END AS severity,
+  CASE
+    WHEN r.pct_rank >= 0.90 THEN 50
+    WHEN r.pct_rank >= 0.60 THEN 30
+    ELSE 10
+  END AS penalty_points
 FROM exploded_phones e
-INNER JOIN dupes d
-  ON e.phone_normalized = d.phone_normalized
-ORDER BY d.duplicate_count DESC, e.phone_normalized, e.name;
+INNER JOIN ranked r
+  ON e.phone_normalized = r.phone_normalized
+ORDER BY r.duplicate_count DESC, e.phone_normalized, e.name;

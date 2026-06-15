@@ -1,80 +1,19 @@
 # Databricks notebook source
 import json
+import os
+import sys
 import time
 from datetime import datetime, timezone
 from pyspark.sql import Row
 
-SYSTEM_PROMPT = """You are a healthcare facility data analyst. Evaluate a facility record and assess trustworthiness of its claims.
-
-RULES:
-- Only cite text that actually appears in the source fields. Never invent or infer.
-- Return "insufficient_data" confidence_tier if evidence is absent or field coverage is too low.
-- capacity and year_established ALWAYS get confidence_tier "insufficient_data" and trust_score null — no exceptions.
-- Flag contradictions where a structured field directly conflicts with free text.
-- Respond ONLY with valid JSON. No markdown fences, no preamble."""
-
-
-def build_prompt(facility: dict) -> str:
-    return f"""Analyze this healthcare facility and return a trust assessment for four dimensions.
-
-STRUCTURED FIELDS:
-facility_id: {facility.get("facility_id", "N/A")}
-facility_type: {facility.get("facility_type", "N/A")}
-state: {facility.get("state", "N/A")}
-capacity: {facility.get("capacity", "NOT PROVIDED")}
-year_established: {facility.get("year_established", "NOT PROVIDED")}
-
-FREE TEXT FIELDS:
-description: {str(facility.get("description", ""))[:1500]}
-capability: {str(facility.get("capability", ""))[:800]}
-procedure: {str(facility.get("procedure", ""))[:800]}
-equipment: {str(facility.get("equipment", ""))[:800]}
-
-Return this exact JSON (no extra keys, no markdown):
-{{
-  "dimensions": [
-    {{
-      "dimension": "capability",
-      "trust_score": <0.0-1.0 or null>,
-      "confidence_tier": "<high|medium|low|insufficient_data>",
-      "evidence_text": "<exact quote from source, or null>",
-      "source_field": "<field name or null>",
-      "contradiction": <true|false>,
-      "contradiction_detail": "<explanation or null>"
-    }},
-    {{
-      "dimension": "equipment",
-      "trust_score": <0.0-1.0 or null>,
-      "confidence_tier": "<high|medium|low|insufficient_data>",
-      "evidence_text": "<exact quote from source, or null>",
-      "source_field": "<field name or null>",
-      "contradiction": <true|false>,
-      "contradiction_detail": "<explanation or null>"
-    }},
-    {{
-      "dimension": "procedure",
-      "trust_score": <0.0-1.0 or null>,
-      "confidence_tier": "<high|medium|low|insufficient_data>",
-      "evidence_text": "<exact quote from source, or null>",
-      "source_field": "<field name or null>",
-      "contradiction": <true|false>,
-      "contradiction_detail": "<explanation or null>"
-    }},
-    {{
-      "dimension": "completeness",
-      "trust_score": null,
-      "confidence_tier": "insufficient_data",
-      "evidence_text": "capacity and year_established have <25% and 48% dataset coverage respectively",
-      "source_field": null,
-      "contradiction": false,
-      "contradiction_detail": null
-    }}
-  ]
-}}\
-"""
+# Add repo root to path so we can import from prompts/
+sys.path.insert(0, os.path.abspath(".."))
+from prompts.trust_extraction import SYSTEM_PROMPT, build_prompt, build_penalty_lookups
+from prompts.trust_signals_writer import create_trust_signals_table, write_signals
 
 CATALOG = "workspace"   # same as 00_setup.py
 SCHEMA = "facilityiq"
+SOURCE_TABLE = "databricks_virtue_foundation_dataset_dais_2026.virtue_foundation_dataset.facilities"
 MODEL = "databricks-meta-llama-3-1-70b-instruct"
 FALLBACK_MODEL = "databricks-dbrx-instruct"
 BATCH_SIZE = 50  # accumulated signals before flushing to Delta (~12-13 facilities at 4 signals each)
@@ -91,8 +30,18 @@ client = OpenAI(
     base_url=f"https://{workspace_url}/serving-endpoints"
 )
 
+# COMMAND ----------
+# Step 1: Run all sql/data_quality/ checks and build a merged penalty lookup.
+# Any .sql file returning (unique_id, penalty_points) is picked up automatically.
+
+print("Building penalty lookups from sql/data_quality/...")
+penalty_lookup = build_penalty_lookups(spark)
+print(f"Total facilities with penalties: {len(penalty_lookup)}")
+
+# COMMAND ----------
+# Step 2: LLM extraction loop
+
 def call_llm(prompt: str, model: str = MODEL) -> str:
-    """Single LLM call, returns raw content string."""
     response = client.chat.completions.create(
         model=model,
         messages=[
@@ -137,7 +86,6 @@ def extract_signals(facility_row: dict) -> list[dict]:
                 print(f"  Fallback on {facility_row['facility_id']}: {e}")
                 time.sleep(2)
                 continue
-            # Write error row and return empty
             err_df = spark.createDataFrame([Row(
                 facility_id=str(facility_row.get("facility_id", "")),
                 error_message=str(e),
@@ -163,24 +111,26 @@ facilities_df = spark.sql(f"""
 
 print(f"Facilities to process: {len(facilities_df)}")
 
+# Ensure the target table exists with the correct schema and partitioning
+create_trust_signals_table(spark, CATALOG, SCHEMA)
+
 all_signals = []
 for i, row in facilities_df.iterrows():
-    signals = extract_signals(row.to_dict())
+    fid = row["facility_id"]
+    row_dict = row.to_dict()
+    row_dict["penalty_points"] = penalty_lookup.get(fid, 0)
+
+    signals = extract_signals(row_dict)
     all_signals.extend(signals)
 
     if len(all_signals) >= BATCH_SIZE:
-        batch_df = spark.createDataFrame(all_signals)
-        batch_df.write.format("delta").mode("append").saveAsTable(
-            f"{CATALOG}.{SCHEMA}.facilities_trust_signals")
-        print(f"  Wrote batch at facility {i+1}/{len(facilities_df)}")
+        written = write_signals(spark, all_signals, CATALOG, SCHEMA)
+        print(f"  Wrote {written} signals at facility {i+1}/{len(facilities_df)}")
         all_signals = []
-        time.sleep(1)  # brief rate limit pause between batches
+        time.sleep(1)
 
 # Write any remaining signals
-if all_signals:
-    batch_df = spark.createDataFrame(all_signals)
-    batch_df.write.format("delta").mode("append").saveAsTable(
-        f"{CATALOG}.{SCHEMA}.facilities_trust_signals")
+write_signals(spark, all_signals, CATALOG, SCHEMA)
 
 total = spark.sql(f"SELECT COUNT(*) as n FROM {CATALOG}.{SCHEMA}.facilities_trust_signals").collect()[0]["n"]
 errors = spark.sql(f"SELECT COUNT(*) as n FROM {CATALOG}.{SCHEMA}.extraction_errors").collect()[0]["n"]
