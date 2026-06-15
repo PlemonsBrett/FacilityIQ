@@ -195,6 +195,28 @@ createApp({
         }
       });
 
+      // GET /api/review/board/unstarted?limit=500 — facilities with no review row yet (not_started column)
+      app.get('/api/review/board/unstarted', async (req, res) => {
+        try {
+          const limit = Math.min(Number(req.query.limit ?? 500), 2000);
+          const { rows } = await appkit.lakebase.query(`
+            SELECT f.facility_id, f.facility_name, f.facility_type, f.state,
+                   'not_started' AS status
+            FROM public.facilities f
+            WHERE NOT EXISTS (
+              SELECT 1 FROM facilityiq.facility_review r
+              WHERE r.facility_id = f.facility_id
+            )
+            ORDER BY f.facility_name
+            LIMIT $1
+          `, [limit]);
+          res.json(rows);
+        } catch (err) {
+          console.error('Failed to fetch unstarted facilities:', err);
+          res.status(500).json({ error: 'Failed to fetch unstarted facilities' });
+        }
+      });
+
       // GET /api/review/board?status=<stage>&limit=500 — kanban cards (facilities in review)
       app.get('/api/review/board', async (req, res) => {
         try {
