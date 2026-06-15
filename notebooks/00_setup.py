@@ -2,7 +2,11 @@
 # Configure these for your workspace
 CATALOG = "YOUR_CATALOG"   # e.g. "main"
 SCHEMA = "facilityiq"
-CSV_PATH = f"dbfs:/FileStore/facilityiq/facilities.csv"  # upload FDR CSV here
+CSV_PATH = "dbfs:/FileStore/facilityiq/facilities.csv"  # upload FDR CSV here
+
+import re
+for _var, _val in [("CATALOG", CATALOG), ("SCHEMA", SCHEMA)]:
+    assert re.fullmatch(r"[a-zA-Z0-9_]+", _val), f"Invalid {_var}: {_val!r}"
 
 spark.sql(f"USE CATALOG {CATALOG}")
 spark.sql(f"CREATE SCHEMA IF NOT EXISTS {SCHEMA}")
@@ -18,10 +22,10 @@ raw_df = (spark.read
     .load(CSV_PATH))
 
 print(f"CSV columns ({len(raw_df.columns)}): {raw_df.columns}")
-print(f"CSV row count: {raw_df.count()}")
-
-# Require facility_id column exists
 assert "facility_id" in raw_df.columns, "facility_id column not found — check CSV"
+raw_count = raw_df.count()
+print(f"CSV row count: {raw_count}")
+assert raw_count > 0, f"CSV loaded 0 rows from {CSV_PATH} — check the path and file"
 
 # Write to facilities_raw (overwrite on re-run is safe — append-only in prod)
 (raw_df.write
@@ -53,6 +57,11 @@ spark.sql(f"""
   USING DELTA
   PARTITIONED BY (dimension)
   TBLPROPERTIES (delta.enableChangeDataFeed = true)
+""")
+
+spark.sql(f"""
+  ALTER TABLE {CATALOG}.{SCHEMA}.facilities_trust_signals
+  SET TBLPROPERTIES (delta.enableChangeDataFeed = true)
 """)
 
 # Create extraction errors table (for failed LLM calls)
