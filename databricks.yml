@@ -1,45 +1,7 @@
 bundle:
   name: facilityiq
 
-variables:
-  lakebase_branch:
-    description: Lakebase branch resource name
-    default: projects/facilityiq/branches/production
-  lakebase_database:
-    description: Lakebase database resource name
-    default: projects/facilityiq/branches/production/databases/databricks-postgres
 
-resources:
-  apps:
-    facilityiq_app:
-      name: facilityiq
-      source_code_path: ./app
-      resources:
-        - name: postgres
-          postgres:
-            branch: ${var.lakebase_branch}
-            database: ${var.lakebase_database}
-
-  jobs:
-    trust_extraction_pipeline:
-      name: FacilityIQ Trust Extraction Pipeline
-      tasks:
-        - task_key: setup
-          notebook_task:
-            notebook_path: ./notebooks/00_setup.py
-            source: WORKSPACE
-        - task_key: extract
-          depends_on:
-            - task_key: setup
-          notebook_task:
-            notebook_path: ./notebooks/01_trust_extraction.py
-            source: WORKSPACE
-        - task_key: validate
-          depends_on:
-            - task_key: extract
-          notebook_task:
-            notebook_path: ./notebooks/02_validate_signals.py
-            source: WORKSPACE
 
 targets:
   dev:
