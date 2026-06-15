@@ -1,14 +1,80 @@
 bundle:
-  name: facilityiq
+  name: facilityiq-data
 
+# This bundle manages the FacilityIQ data pipeline (notebooks + jobs).
+# It is separate from the app bundle (app/databricks.yml), which manages
+# the Databricks App and its Lakebase binding.
+#
+# Deploy: databricks bundle deploy --target prod (from repo root)
+# Run:    databricks bundle run --target prod data_pipeline
 
+variables:
+  catalog:
+    default: workspace
+    description: Unity Catalog catalog for facilityiq schema
+  warehouse_id:
+    default: a4e1c80a2e8ea399
+    description: SQL warehouse ID used by SQL tasks
 
 targets:
   dev:
     mode: development
     default: true
+    workspace:
+      host: https://dbc-9924376b-eaa9.cloud.databricks.com
+      root_path: ~/.bundle/${bundle.name}/dev
+
   prod:
     mode: production
     workspace:
       host: https://dbc-9924376b-eaa9.cloud.databricks.com
       root_path: /Workspace/prod/${bundle.name}
+    variables:
+      catalog: workspace
+
+resources:
+  jobs:
+    data_pipeline:
+      name: FacilityIQ Data Pipeline
+      description: >
+        Runs the full FacilityIQ data pipeline in order:
+        setup → trust extraction (quality scores, email outreach, trust signals).
+        SQL medallion scripts (bronze/silver/gold) are run manually until
+        they are wired into SQL tasks here.
+
+      tasks:
+        - task_key: setup
+          description: Create Delta tables and load raw CSV
+          notebook_task:
+            notebook_path: ${workspace.root_path}/files/notebooks/00_setup.py
+            source: WORKSPACE
+          job_cluster_key: pipeline_cluster
+
+        - task_key: trust_extraction
+          description: >
+            Run quality scoring, email outreach gold table,
+            and LLM trust signal extraction
+          depends_on:
+            - task_key: setup
+          notebook_task:
+            notebook_path: ${workspace.root_path}/files/notebooks/01_trust_extraction.py
+            source: WORKSPACE
+          job_cluster_key: pipeline_cluster
+
+        - task_key: validate_signals
+          description: Spot-check extraction quality
+          depends_on:
+            - task_key: trust_extraction
+          notebook_task:
+            notebook_path: ${workspace.root_path}/files/notebooks/02_validate_signals.py
+            source: WORKSPACE
+          job_cluster_key: pipeline_cluster
+
+      job_clusters:
+        - job_cluster_key: pipeline_cluster
+          new_cluster:
+            spark_version: 15.4.x-scala2.12
+            node_type_id: i3.xlarge
+            num_workers: 1
+            spark_conf:
+              spark.databricks.delta.preview.enabled: "true"
