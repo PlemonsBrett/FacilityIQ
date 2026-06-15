@@ -78,6 +78,8 @@ uv run streamlit run app/main.py
 - [Technical Design Document](docs/TDD.md)
 - [Data Validation Checks](docs/Data_Validation_Checks.md)
 
+Data quality scoring queries live in [`sql/data_quality`](sql/data_quality/). Start with `08_top_100_worst_quality_scores.sql` to identify the 100 facilities most in need of review.
+
 ---
 
 ## Repository Structure

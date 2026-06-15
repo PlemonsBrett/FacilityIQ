@@ -13,7 +13,7 @@ FacilityIQ already answers: *Can we trust what this facility claims?*
 
 The data quality layer answers a different but equally important question: *Can we trust this facility record at all?*
 
-A facility may have reasonable free-text evidence, but if its phone number, email address, coordinates, or identity fields are reused across many unrelated facilities, that is a strong sign that the underlying record needs review. These checks should create a separate **Quality Score** that helps planners and analysts spot suspicious records before relying on trust scores.
+A facility may have reasonable free-text evidence, but if its phone number, email address, coordinates, or identity fields are reused across many unrelated facilities, that is a strong sign that the underlying record needs review. These checks should create a separate **Quality Score** that helps planners and analysts spot suspicious records before relying on trust scores. For the hackathon, the fastest path is query-only: run reusable Databricks SQL checks directly against the source table and review the 100 lowest-scoring facilities.
 
 ---
 
@@ -46,6 +46,19 @@ Start each facility at 100 points, then subtract points for failed checks.
 | Low | -3 to -10 | Formatting issue, suspicious punctuation, weak address |
 
 Scores should floor at 0. Each penalty should create a visible validation issue with an explanation and severity.
+
+Reusable query scripts live in `sql/data_quality/`:
+
+| Script | Purpose |
+|---|---|
+| `01_duplicate_phones.sql` | Finds phone numbers reused across facilities |
+| `02_duplicate_emails.sql` | Finds email addresses reused across facilities |
+| `03_duplicate_facility_identity.sql` | Finds likely duplicate facility records |
+| `04_missing_core_fields.sql` | Finds records missing name, type, location, or contacts |
+| `05_invalid_contact_formats.sql` | Finds malformed or placeholder emails/phones |
+| `06_address_and_location_quality.sql` | Finds weak locations and coordinates outside India |
+| `07_text_field_quality.sql` | Finds thin or duplicated evidence-bearing text |
+| `08_top_100_worst_quality_scores.sql` | Combines checks into a query-only Quality Score and returns the 100 worst facilities |
 
 ---
 
@@ -233,81 +246,62 @@ Examples:
 
 ---
 
-## 6. Suggested Output Table
+## 6. Query-Only Output
 
-Create a derived Delta table with one row per validation issue.
+For now, do not create persistent tables. Use the SQL scripts as repeatable analysis queries.
 
-```sql
-CREATE TABLE facilities_quality_issues (
-  issue_id          STRING NOT NULL,
-  facility_id       STRING NOT NULL,
-  check_name        STRING NOT NULL,
-  severity          STRING NOT NULL, -- 'critical' | 'high' | 'medium' | 'low'
-  penalty_points    INT NOT NULL,
-  issue_summary     STRING NOT NULL,
-  issue_detail      STRING,
-  evidence_value    STRING,
-  related_count     INT,
-  related_facilities ARRAY<STRING>,
-  detected_at       TIMESTAMP NOT NULL
-)
-USING DELTA;
+The main review query is:
+
+```text
+sql/data_quality/08_top_100_worst_quality_scores.sql
 ```
 
-Create a second table with one row per facility.
+It returns:
 
-```sql
-CREATE TABLE facilities_quality_scores (
-  facility_id        STRING NOT NULL,
-  quality_score      INT NOT NULL,
-  quality_tier       STRING NOT NULL, -- 'high_quality' | 'needs_review' | 'low_quality' | 'critical_issue'
-  issue_count        INT NOT NULL,
-  critical_count     INT NOT NULL,
-  high_count         INT NOT NULL,
-  medium_count       INT NOT NULL,
-  low_count          INT NOT NULL,
-  computed_at        TIMESTAMP NOT NULL
-)
-USING DELTA;
-```
+- Facility identity fields
+- `quality_score`
+- `quality_tier`
+- Issue counts by severity
+- A list of issue summaries explaining why the facility scored poorly
+
+If the team later wants persistence, the query output can be converted into Delta tables. Until then, query-only scoring keeps iteration fast and avoids managing extra tables during the hackathon.
 
 ---
 
-## 7. Example PySpark Checks
+## 7. Example Databricks SQL Check
 
-### Duplicate Email
+The duplicate phone script follows this pattern:
 
-```python
-from pyspark.sql import functions as F
-
-email_counts = (
-    facilities_raw
-    .withColumn("email_normalized", F.lower(F.trim(F.col("email"))))
-    .filter(F.col("email_normalized").isNotNull())
-    .filter(F.col("email_normalized") != "")
-    .groupBy("email_normalized")
-    .agg(
-        F.countDistinct("facility_id").alias("facility_count"),
-        F.collect_set("facility_id").alias("related_facilities"),
-    )
-    .filter(F.col("facility_count") > 1)
+```sql
+WITH exploded_phones AS (
+  SELECT
+    unique_id,
+    name,
+    facilityTypeId,
+    address_city,
+    address_stateOrRegion,
+    address_country,
+    phone AS raw_phone,
+    regexp_replace(phone, '[^0-9]', '') AS phone_normalized
+  FROM databricks_virtue_foundation_dataset_dais_2026.virtue_foundation_dataset.facilities
+  LATERAL VIEW explode(from_json(phone_numbers, 'ARRAY<STRING>')) exploded AS phone
+  WHERE phone_numbers IS NOT NULL
+    AND phone_numbers != 'null'
+    AND phone_numbers != '[]'
+),
+dupes AS (
+  SELECT phone_normalized, COUNT(DISTINCT unique_id) AS duplicate_count
+  FROM exploded_phones
+  WHERE phone_normalized IS NOT NULL
+    AND length(phone_normalized) >= 7
+  GROUP BY phone_normalized
+  HAVING COUNT(DISTINCT unique_id) > 1
 )
-```
-
-### Duplicate Phone
-
-```python
-phone_counts = (
-    facilities_raw
-    .withColumn("phone_normalized", F.regexp_replace(F.col("phone"), r"[^0-9]", ""))
-    .filter(F.length("phone_normalized") >= 7)
-    .groupBy("phone_normalized")
-    .agg(
-        F.countDistinct("facility_id").alias("facility_count"),
-        F.collect_set("facility_id").alias("related_facilities"),
-    )
-    .filter(F.col("facility_count") > 1)
-)
+SELECT *
+FROM exploded_phones e
+INNER JOIN dupes d
+  ON e.phone_normalized = d.phone_normalized
+ORDER BY d.duplicate_count DESC, e.phone_normalized, e.name;
 ```
 
 ---
