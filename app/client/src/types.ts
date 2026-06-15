@@ -35,6 +35,12 @@ export interface FacilityDetail {
     equipment: string | null;
     capacity: number | null;
     year_established: number | null;
+    number_doctors: number | null;
+    official_phone: string | null;
+    email: string | null;
+    official_website: string | null;
+    address_line1: string | null;
+    overridden_fields: string[];
   };
   trust_signals: TrustSignal[];
 }
@@ -63,10 +69,10 @@ export function scoreToInt(raw: string | null): number | null {
 }
 
 export function trustColor(score: number | null): string {
-  if (score === null) return "rgba(255,255,255,0.3)";
-  if (score >= 70) return "#4ade80";
-  if (score >= 40) return "#fbbf24";
-  return "#f87171";
+  if (score === null) return "var(--fiq-trust-null)";
+  if (score >= 70) return "var(--fiq-trust-high)";
+  if (score >= 40) return "var(--fiq-trust-med)";
+  return "var(--fiq-trust-low)";
 }
 
 export function trustLabel(score: number | null): string {
@@ -74,4 +80,12 @@ export function trustLabel(score: number | null): string {
   if (score >= 70) return "HIGH";
   if (score >= 40) return "MED";
   return "LOW";
+}
+
+export function overallScore(signals: TrustSignal[]): number | null {
+  const valid = signals
+    .filter((s) => s.confidence_tier !== "insufficient_data" && s.trust_score !== null)
+    .map((s) => scoreToInt(s.trust_score) as number);
+  if (valid.length === 0) return null;
+  return Math.round(valid.reduce((a, b) => a + b, 0) / valid.length);
 }
