@@ -123,11 +123,12 @@ export async function postAction(
 export async function fetchBoardColumn(status: ReviewStatus): Promise<ReviewCard[]> {
   if (status === "not_started") {
     const result = await tryFetch<ReviewCard[]>("/api/review/board/unstarted?limit=50");
-    if (result !== null) return result;
+    // Empty result means DB is empty or unreachable — show dummy facilities
+    if (result !== null && result.length > 0) return result;
     return getLocalUnstartedFacilities();
   }
   const result = await tryFetch<ReviewCard[]>(`/api/review/board?status=${status}&limit=200`);
-  if (result !== null) return result;
+  if (result !== null && result.length > 0) return result;
   return getLocalBoardColumn(status);
 }
 

@@ -33,19 +33,19 @@
   /* Insufficient data badge */
   --fiq-insufficient-bg: rgba(251,191,36,0.15);
   --fiq-insufficient-text: #fbbf24;
-  /* GuidedAnalysis — highlight + bubble colors (theme-adaptive) */
+  /* GuidedAnalysis — highlight + bubble colors — DARK MODE values */
   --ga-hl-e-bg: rgba(99,179,237,0.15);
-  --ga-hl-e-color: #3730a3;
+  --ga-hl-e-color: #90cdf4;          /* light blue — readable on dark bg */
   --ga-hl-e-underline: rgba(99,179,237,0.5);
   --ga-hl-c-bg: rgba(251,191,36,0.15);
-  --ga-hl-c-color: #92400e;
+  --ga-hl-c-color: #fde68a;          /* light amber — readable on dark bg */
   --ga-hl-c-underline: rgba(251,191,36,0.55);
-  --ga-bubble-e-bg: #ffffff;
-  --ga-bubble-e-border: #c7d2fe;
-  --ga-bubble-e-tail: #ffffff;
-  --ga-bubble-c-bg: #fffbeb;
-  --ga-bubble-c-border: #fde68a;
-  --ga-bubble-c-tail: #fffbeb;
+  --ga-bubble-e-bg: #0d2e3c;         /* dark teal — white text readable */
+  --ga-bubble-e-border: rgba(99,179,237,0.35);
+  --ga-bubble-e-tail: #0d2e3c;
+  --ga-bubble-c-bg: #271e08;         /* dark amber — white text readable */
+  --ga-bubble-c-border: rgba(251,191,36,0.4);
+  --ga-bubble-c-tail: #271e08;
 }
 
 [data-theme="light"] {
