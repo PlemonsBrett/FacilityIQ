@@ -1,44 +1,87 @@
 #!/usr/bin/env bash
-# Publish the gold facilities table to the Lakebase prod path the app reads:
-#   workspace.facilityiq.facilities_gold  ──(synced table)──►  `facilityiq-lakebase`.public.facilities
+# Sync all FacilityIQ Delta tables (Unity Catalog) → Lakebase Postgres (app reads here).
 #
-# Why a synced table (not a path change in the SQL): `facilityiq-lakebase` is a
-# Lakebase (Postgres) catalog. You cannot CREATE a Delta table there with Spark —
-# the medallion stays Delta in Unity Catalog, and this sync serves gold to Postgres.
+# Direction: workspace.facilityiq.* ──(synced table)──► facilityiq-lakebase.public.*
 #
-# Why SNAPSHOT mode: facilities_gold is rebuilt with CREATE OR REPLACE (full overwrite),
-# which breaks the Change Data Feed lineage that TRIGGERED/CONTINUOUS require.
-# Re-run this script (or trigger the sync pipeline) after each gold rebuild to refresh.
+# Tables synced:
+#   facilities_gold           → public.facilities           (primary facility data)
+#   facilities_trust_signals  → public.facilities_trust_signals
+#   facilities_quality_scores → public.facilities_quality_scores
+#   facilities_email_outreach → public.facilities_email_outreach
 #
-# NOT a DABs resource: for Autoscaling Lakebase, the DABs `synced_database_tables`
-# field maps to the Provisioned API and can create unintended instances. Use this CLI.
+# NOT synced (live in Lakebase Postgres natively, created by app on boot):
+#   facilityiq.facilities_overrides  — app writes, gold reads via facilityiq-lakebase.facilityiq.*
+#   facilityiq.user_actions          — app owned
+#   facilityiq.facility_review       — app owned (kanban)
 #
-# Prereqs: Lakebase project + `facilityiq-lakebase` UC catalog already exist
-# (see docs/superpowers/plans/2026-06-15-facilityiq-mvp.md). USE_SCHEMA + CREATE_TABLE
-# on the target schema. Set PROFILE below.
+# Why SNAPSHOT: all these tables are rebuilt with CREATE OR REPLACE (full overwrite),
+# which breaks the CDF lineage required by TRIGGERED/CONTINUOUS. Re-run this script
+# after each pipeline run to refresh Lakebase.
+#
+# Prereqs: facilityiq-lakebase UC catalog and Lakebase project already exist.
+#          Run pipeline notebooks first so source tables exist.
 
 set -euo pipefail
 
-PROFILE="${DATABRICKS_PROFILE:-DEFAULT}"
-SOURCE_TABLE="workspace.facilityiq.facilities_gold"
-TARGET="facilityiq-lakebase.public.facilities"   # the table the app reads
+PROFILE="${DATABRICKS_PROFILE:-facilityiq}"
 BRANCH="projects/facilityiq/branches/production"
+STORAGE_CATALOG="workspace"
+STORAGE_SCHEMA="default"
 
-databricks postgres create-synced-table "${TARGET}" \
-  --json "{
-    \"spec\": {
-      \"source_table_full_name\": \"${SOURCE_TABLE}\",
-      \"primary_key_columns\": [\"unique_id\"],
-      \"scheduling_policy\": \"SNAPSHOT\",
-      \"branch\": \"${BRANCH}\",
-      \"postgres_database\": \"databricks_postgres\",
-      \"create_database_objects_if_missing\": true,
-      \"new_pipeline_spec\": {
-        \"storage_catalog\": \"workspace\",
-        \"storage_schema\": \"default\"
+sync_table() {
+  local source="$1"
+  local target="$2"
+  local pk="$3"
+
+  echo ""
+  echo "▶ Syncing ${source} → ${target} (pk: ${pk})"
+
+  databricks postgres create-synced-table "${target}" \
+    --json "{
+      \"spec\": {
+        \"source_table_full_name\": \"${source}\",
+        \"primary_key_columns\": [${pk}],
+        \"scheduling_policy\": \"SNAPSHOT\",
+        \"branch\": \"${BRANCH}\",
+        \"postgres_database\": \"databricks_postgres\",
+        \"create_database_objects_if_missing\": true,
+        \"new_pipeline_spec\": {
+          \"storage_catalog\": \"${STORAGE_CATALOG}\",
+          \"storage_schema\": \"${STORAGE_SCHEMA}\"
+        }
       }
-    }
-  }" --profile "${PROFILE}"
+    }" --profile "${PROFILE}"
 
-# Check status:
-#   databricks postgres get-synced-table "synced_tables/${TARGET}" --profile "${PROFILE}"
+  echo "  ✓ Created. Check status:"
+  echo "    databricks postgres get-synced-table \"synced_tables/${target}\" --profile ${PROFILE}"
+}
+
+# 1. Gold facilities — primary table the app lists and searches
+sync_table \
+  "workspace.facilityiq.facilities_gold" \
+  "facilityiq-lakebase.public.facilities" \
+  '"unique_id"'
+
+# 2. Trust signals — LLM-extracted trust scores per (facility, dimension)
+sync_table \
+  "workspace.facilityiq.facilities_trust_signals" \
+  "facilityiq-lakebase.public.facilities_trust_signals" \
+  '"facility_id","dimension"'
+
+# 3. Quality scores — data-record integrity score per facility
+sync_table \
+  "workspace.facilityiq.facilities_quality_scores" \
+  "facilityiq-lakebase.public.facilities_quality_scores" \
+  '"facility_id"'
+
+# 4. Email outreach — per-email data state for the outreach workflow
+sync_table \
+  "workspace.facilityiq.facilities_email_outreach" \
+  "facilityiq-lakebase.public.facilities_email_outreach" \
+  '"email"'
+
+echo ""
+echo "✓ All synced tables created. Pipeline:"
+echo "  1. Run notebooks (00_setup → 01_trust_extraction)"
+echo "  2. Re-run this script to refresh Lakebase"
+echo "  3. App reads from facilityiq-lakebase.public.*"
