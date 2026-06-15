@@ -1,4 +1,5 @@
-# Databricks notebook — run on a cluster after 00_setup.py
+# Databricks notebook source
+# MAGIC %md # FacilityIQ — Trust Extraction Pipeline
 import json
 import time
 from datetime import datetime, timezone
@@ -6,7 +7,7 @@ from pyspark.sql import Row
 
 # Add repo to path so we can import the prompt
 import sys
-sys.path.insert(0, "/Workspace/Repos/<your-repo-path>")  # update to your workspace path
+sys.path.insert(0, "/Workspace/Users/brett.plemons@gmail.com/facilityiq")
 from prompts.trust_extraction import SYSTEM_PROMPT, build_prompt
 
 CATALOG = "workspace"   # same as 00_setup.py

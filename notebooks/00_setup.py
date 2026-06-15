@@ -1,4 +1,5 @@
-# Databricks notebook — run on a cluster, not locally
+# Databricks notebook source
+# MAGIC %md # FacilityIQ — Setup
 # Configure these for your workspace
 CATALOG = "workspace"   # the catalog where facilityiq schema will live
 SCHEMA = "facilityiq"
