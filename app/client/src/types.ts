@@ -89,3 +89,24 @@ export function overallScore(signals: TrustSignal[]): number | null {
   if (valid.length === 0) return null;
   return Math.round(valid.reduce((a, b) => a + b, 0) / valid.length);
 }
+
+export type ReviewStatus =
+  | "not_started"
+  | "in_progress"
+  | "email_sent"
+  | "called"
+  | "parked"
+  | "validation_complete";
+
+export interface ReviewCard {
+  facility_id: string;
+  facility_name: string;
+  facility_type: string | null;
+  state: string | null;
+  status: ReviewStatus;
+  parked_reason: string | null;
+  assigned_to: string | null;
+  notes: string | null;
+  updated_by: string | null;
+  updated_at: string;
+}
