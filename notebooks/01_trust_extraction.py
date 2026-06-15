@@ -31,9 +31,9 @@ procedure: {str(facility.get("procedure", ""))[:800]}
 equipment: {str(facility.get("equipment", ""))[:800]}
 
 Return this exact JSON (no extra keys, no markdown):
-{{{{
+{{
   "dimensions": [
-    {{{{
+    {{
       "dimension": "capability",
       "trust_score": <0.0-1.0 or null>,
       "confidence_tier": "<high|medium|low|insufficient_data>",
@@ -41,8 +41,8 @@ Return this exact JSON (no extra keys, no markdown):
       "source_field": "<field name or null>",
       "contradiction": <true|false>,
       "contradiction_detail": "<explanation or null>"
-    }}}},
-    {{{{
+    }},
+    {{
       "dimension": "equipment",
       "trust_score": <0.0-1.0 or null>,
       "confidence_tier": "<high|medium|low|insufficient_data>",
@@ -50,8 +50,8 @@ Return this exact JSON (no extra keys, no markdown):
       "source_field": "<field name or null>",
       "contradiction": <true|false>,
       "contradiction_detail": "<explanation or null>"
-    }}}},
-    {{{{
+    }},
+    {{
       "dimension": "procedure",
       "trust_score": <0.0-1.0 or null>,
       "confidence_tier": "<high|medium|low|insufficient_data>",
@@ -59,8 +59,8 @@ Return this exact JSON (no extra keys, no markdown):
       "source_field": "<field name or null>",
       "contradiction": <true|false>,
       "contradiction_detail": "<explanation or null>"
-    }}}},
-    {{{{
+    }},
+    {{
       "dimension": "completeness",
       "trust_score": null,
       "confidence_tier": "insufficient_data",
@@ -68,9 +68,9 @@ Return this exact JSON (no extra keys, no markdown):
       "source_field": null,
       "contradiction": false,
       "contradiction_detail": null
-    }}}}
+    }}
   ]
-}}}}\
+}}\
 """
 
 CATALOG = "workspace"   # same as 00_setup.py
