@@ -11,6 +11,17 @@ createApp({
     try {
       await appkit.lakebase.query(`
         CREATE SCHEMA IF NOT EXISTS facilityiq;
+        CREATE TABLE IF NOT EXISTS facilityiq.facilities_overrides (
+          facility_id  TEXT        NOT NULL,
+          field_name   TEXT        NOT NULL,
+          new_value    TEXT,
+          analyst_id   TEXT,
+          reason       TEXT,
+          updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_fo_facility_field
+          ON facilityiq.facilities_overrides (facility_id, field_name, updated_at DESC);
+
         CREATE TABLE IF NOT EXISTS facilityiq.user_actions (
           action_id     TEXT PRIMARY KEY,
           facility_id   TEXT NOT NULL,
