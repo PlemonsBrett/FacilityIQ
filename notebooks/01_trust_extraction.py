@@ -8,8 +8,17 @@ from pyspark.sql import Row
 
 # Add repo root to path so we can import from prompts/
 sys.path.insert(0, os.path.abspath(".."))
-from prompts.trust_extraction import SYSTEM_PROMPT, build_prompt, build_penalty_lookups
+from prompts.trust_extraction import SYSTEM_PROMPT, build_prompt
 from prompts.trust_signals_writer import create_trust_signals_table, write_signals
+from prompts.quality_score import (
+    build_quality_scores,
+    create_quality_scores_table,
+    write_quality_scores,
+)
+from prompts.email_outreach import (
+    create_email_outreach_table,
+    write_email_outreach,
+)
 
 CATALOG = "workspace"   # same as 00_setup.py
 SCHEMA = "facilityiq"
@@ -31,15 +40,27 @@ client = OpenAI(
 )
 
 # COMMAND ----------
-# Step 1: Run all sql/data_quality/ checks and build a merged penalty lookup.
-# Any .sql file returning (unique_id, penalty_points) is picked up automatically.
+# Step 1: Quality Score gold table (facilities_quality_scores).
+# Deterministic, SQL-driven. Separate from Trust Score per the PRD:
+# Quality Score = record integrity; Trust Score = claim trustworthiness.
 
-print("Building penalty lookups from sql/data_quality/...")
-penalty_lookup = build_penalty_lookups(spark)
-print(f"Total facilities with penalties: {len(penalty_lookup)}")
+print("Computing quality scores from sql/data_quality/...")
+quality_scores = build_quality_scores(spark)
+create_quality_scores_table(spark, CATALOG, SCHEMA)
+n_quality = write_quality_scores(spark, quality_scores, CATALOG, SCHEMA, datetime.now(timezone.utc))
+print(f"Wrote {n_quality} rows to facilities_quality_scores")
 
 # COMMAND ----------
-# Step 2: LLM extraction loop
+# Step 2: Email outreach gold table (facilities_email_outreach), keyed by email.
+# Joins the quality scores written above, so it must run after Step 1.
+
+print("Building email outreach metadata...")
+create_email_outreach_table(spark, CATALOG, SCHEMA)
+n_emails = write_email_outreach(spark, CATALOG, SCHEMA)
+print(f"Wrote {n_emails} rows to facilities_email_outreach")
+
+# COMMAND ----------
+# Step 3: LLM trust extraction loop
 
 def call_llm(prompt: str, model: str = MODEL) -> str:
     response = client.chat.completions.create(
@@ -116,10 +137,7 @@ create_trust_signals_table(spark, CATALOG, SCHEMA)
 
 all_signals = []
 for i, row in facilities_df.iterrows():
-    fid = row["facility_id"]
     row_dict = row.to_dict()
-    row_dict["penalty_points"] = penalty_lookup.get(fid, 0)
-
     signals = extract_signals(row_dict)
     all_signals.extend(signals)
 
