@@ -10,7 +10,7 @@ interface Props {
 const NAV: { view: View; icon: string; label: string }[] = [
   { view: "desk", icon: "⊞", label: "Trust Desk" },
   { view: "dashboard", icon: "◫", label: "Dashboard" },
-  { view: "queue", icon: "⚑", label: "Queue" },
+  { view: "board", icon: "⊟", label: "Board" },
 ];
 
 export default function Sidebar({ view, onViewChange }: Props) {

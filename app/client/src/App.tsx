@@ -4,11 +4,11 @@ import SearchPanel from "./components/SearchPanel";
 import GuidedAnalysis from "./components/GuidedAnalysis";
 import Sidebar from "./components/Sidebar";
 import DashboardPage from "./pages/DashboardPage";
-import QueuePage from "./pages/QueuePage";
+import KanbanPage from "./pages/KanbanPage";
 import { ANALYST_ID } from "./lib/analyst";
 import { fetchFacilityDetail } from "./lib/api";
 
-export type View = "desk" | "dashboard" | "queue";
+export type View = "desk" | "dashboard" | "board";
 export { ANALYST_ID };
 
 export default function App() {
@@ -72,9 +72,9 @@ export default function App() {
         </div>
       )}
 
-      {view === "queue" && (
-        <div style={{ flex: 1, overflowY: "auto" }}>
-          <QueuePage analystId={ANALYST_ID} onNavigateToFacility={navigateToFacility} />
+      {view === "board" && (
+        <div style={{ flex: 1, overflow: "hidden" }}>
+          <KanbanPage onNavigateToFacility={navigateToFacility} />
         </div>
       )}
     </div>
