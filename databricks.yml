@@ -27,19 +27,19 @@ resources:
         - task_key: setup
           notebook_task:
             notebook_path: ./notebooks/00_setup.py
-            source: GIT
+            source: WORKSPACE
         - task_key: extract
           depends_on:
             - task_key: setup
           notebook_task:
             notebook_path: ./notebooks/01_trust_extraction.py
-            source: GIT
+            source: WORKSPACE
         - task_key: validate
           depends_on:
             - task_key: extract
           notebook_task:
             notebook_path: ./notebooks/02_validate_signals.py
-            source: GIT
+            source: WORKSPACE
 
 targets:
   dev:
