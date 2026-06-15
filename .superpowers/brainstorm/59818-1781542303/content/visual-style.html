@@ -1,0 +1,202 @@
+<h2>Visual style direction</h2>
+<p class="subtitle">Same layout, same data — three distinct feels. All use shadcn/ui + Tailwind + Databricks palette.</p>
+
+<div class="cards">
+
+  <!-- Option A: Intelligence Platform -->
+  <div class="card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="card-image" style="background:#0B2026;padding:0;overflow:hidden;border-radius:6px 6px 0 0;">
+      <div style="display:flex;height:200px;">
+        <!-- Dark sidebar -->
+        <div style="width:130px;background:#081519;padding:10px 8px;display:flex;flex-direction:column;gap:2px;">
+          <div style="color:#FF3621;font-size:9px;font-weight:800;letter-spacing:2px;margin-bottom:10px;padding:0 4px;">FACILITYIQ</div>
+          <div style="background:#0B2026;border-radius:4px;padding:5px 8px;">
+            <div style="height:6px;background:#FF3621;border-radius:2px;width:60%;margin-bottom:2px;"></div>
+            <div style="height:5px;background:rgba(255,255,255,0.2);border-radius:2px;width:80%;"></div>
+          </div>
+          <div style="padding:5px 8px;">
+            <div style="height:5px;background:rgba(255,255,255,0.12);border-radius:2px;width:70%;margin-bottom:2px;"></div>
+            <div style="height:5px;background:rgba(255,255,255,0.08);border-radius:2px;width:50%;"></div>
+          </div>
+          <div style="padding:5px 8px;">
+            <div style="height:5px;background:rgba(255,255,255,0.12);border-radius:2px;width:80%;margin-bottom:2px;"></div>
+            <div style="height:5px;background:rgba(255,255,255,0.08);border-radius:2px;width:55%;"></div>
+          </div>
+          <div style="margin-top:auto;padding:5px 8px;">
+            <div style="height:5px;background:rgba(255,54,33,0.3);border-radius:2px;width:65%;margin-bottom:2px;"></div>
+            <div style="height:5px;background:rgba(255,54,33,0.2);border-radius:2px;width:40%;"></div>
+          </div>
+        </div>
+        <!-- Dark content panel -->
+        <div style="flex:1;background:#0f1f26;padding:10px 12px;">
+          <div style="font-size:10px;font-weight:700;color:white;margin-bottom:2px;">Apollo Hospital Mumbai</div>
+          <div style="font-size:8px;color:rgba(255,255,255,0.4);margin-bottom:8px;">Maharashtra · Multi-Specialty</div>
+          <!-- Score ring mockup -->
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+            <div style="width:36px;height:36px;border-radius:50%;background:conic-gradient(#22c55e 0% 84%, #1a3040 84% 100%);display:flex;align-items:center;justify-content:center;">
+              <div style="width:26px;height:26px;border-radius:50%;background:#0f1f26;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:#22c55e;">84</div>
+            </div>
+            <div>
+              <div style="font-size:8px;color:rgba(255,255,255,0.5);text-transform:uppercase;letter-spacing:.5px;">Overall Trust</div>
+              <div style="font-size:9px;color:#22c55e;font-weight:600;">HIGH CONFIDENCE</div>
+            </div>
+          </div>
+          <!-- Dimension bars -->
+          <div style="margin-bottom:3px;">
+            <div style="display:flex;justify-content:space-between;font-size:7px;color:rgba(255,255,255,0.4);margin-bottom:2px;text-transform:uppercase;letter-spacing:.3px;"><span>Capability</span><span style="color:#22c55e;">84</span></div>
+            <div style="height:3px;background:rgba(255,255,255,0.08);border-radius:2px;"><div style="height:100%;width:84%;background:#22c55e;border-radius:2px;"></div></div>
+          </div>
+          <div style="margin-bottom:3px;">
+            <div style="display:flex;justify-content:space-between;font-size:7px;color:rgba(255,255,255,0.4);margin-bottom:2px;text-transform:uppercase;letter-spacing:.3px;"><span>Equipment</span><span style="color:#f59e0b;">61</span></div>
+            <div style="height:3px;background:rgba(255,255,255,0.08);border-radius:2px;"><div style="height:100%;width:61%;background:#f59e0b;border-radius:2px;"></div></div>
+          </div>
+          <!-- Contradiction badge -->
+          <div style="background:rgba(255,54,33,0.12);border:1px solid rgba(255,54,33,0.3);border-radius:4px;padding:4px 6px;margin-top:6px;">
+            <div style="font-size:7px;color:#FF3621;font-weight:700;">⚠ CONTRADICTION · HIGH</div>
+            <div style="font-size:7px;color:rgba(255,255,255,0.4);margin-top:1px;">icu_available conflicts with free text</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>Intelligence Platform</h3>
+      <p>Dark navy theme throughout. Red accents for trust signals. Circular score indicator. Feels like a security ops or financial intelligence tool — authoritative, premium, distinctive.</p>
+    </div>
+  </div>
+
+  <!-- Option B: Clinical Clarity -->
+  <div class="card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="card-image" style="background:white;padding:0;overflow:hidden;border-radius:6px 6px 0 0;border:1px solid #e5e7eb;">
+      <div style="background:#fff;border-bottom:2px solid #0B2026;padding:8px 12px;display:flex;justify-content:space-between;align-items:center;">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <div style="width:6px;height:16px;background:#FF3621;border-radius:1px;"></div>
+          <span style="font-size:10px;font-weight:800;color:#0B2026;letter-spacing:1.5px;">FACILITYIQ</span>
+        </div>
+        <div style="font-size:8px;color:#9ca3af;letter-spacing:.5px;">TRUST DESK · INDIA</div>
+      </div>
+      <div style="display:flex;height:172px;">
+        <!-- Clean list -->
+        <div style="width:130px;border-right:1px solid #f1f5f9;padding:6px;">
+          <div style="background:#0B2026;border-radius:3px;padding:5px 7px;margin-bottom:2px;">
+            <div style="height:6px;background:rgba(255,255,255,0.7);border-radius:1px;width:80%;margin-bottom:2px;"></div>
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <div style="height:5px;background:rgba(255,255,255,0.3);border-radius:1px;width:50%;"></div>
+              <div style="font-size:8px;font-weight:700;color:#4ade80;">84</div>
+            </div>
+          </div>
+          <div style="padding:5px 7px;margin-bottom:2px;">
+            <div style="height:6px;background:#e2e8f0;border-radius:1px;width:80%;margin-bottom:2px;"></div>
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <div style="height:5px;background:#e2e8f0;border-radius:1px;width:50%;"></div>
+              <div style="font-size:8px;font-weight:700;color:#4ade80;">79</div>
+            </div>
+          </div>
+          <div style="padding:5px 7px;margin-bottom:2px;">
+            <div style="height:6px;background:#e2e8f0;border-radius:1px;width:70%;margin-bottom:2px;"></div>
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <div style="height:5px;background:#e2e8f0;border-radius:1px;width:40%;"></div>
+              <div style="font-size:8px;font-weight:700;color:#f59e0b;">62</div>
+            </div>
+          </div>
+        </div>
+        <!-- Clinical detail panel -->
+        <div style="flex:1;padding:10px 12px;">
+          <div style="font-size:11px;font-weight:700;color:#0B2026;margin-bottom:1px;">Apollo Hospital Mumbai</div>
+          <div style="font-size:8px;color:#94a3b8;margin-bottom:8px;letter-spacing:.3px;">MAHARASHTRA · MULTI-SPECIALTY</div>
+          <div style="display:flex;align-items:baseline;gap:4px;margin-bottom:6px;">
+            <div style="font-size:28px;font-weight:800;color:#0B2026;line-height:1;">84</div>
+            <div style="font-size:8px;color:#94a3b8;">/ 100</div>
+            <div style="margin-left:4px;font-size:8px;font-weight:600;color:#16a34a;background:#f0fdf4;padding:2px 6px;border-radius:2px;">HIGH</div>
+          </div>
+          <div style="margin-bottom:3px;">
+            <div style="display:flex;justify-content:space-between;font-size:8px;color:#64748b;margin-bottom:2px;font-weight:500;"><span>CAPABILITY</span><span>84</span></div>
+            <div style="height:4px;background:#f1f5f9;border-radius:2px;"><div style="height:100%;width:84%;background:#0B2026;border-radius:2px;"></div></div>
+          </div>
+          <div style="margin-bottom:3px;">
+            <div style="display:flex;justify-content:space-between;font-size:8px;color:#64748b;margin-bottom:2px;font-weight:500;"><span>EQUIPMENT</span><span>61</span></div>
+            <div style="height:4px;background:#f1f5f9;border-radius:2px;"><div style="height:100%;width:61%;background:#0B2026;border-radius:2px;"></div></div>
+          </div>
+          <div style="border-top:1px solid #f1f5f9;margin-top:6px;padding-top:5px;font-size:7px;color:#FF3621;font-weight:700;">⚠ CONTRADICTION DETECTED</div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>Clinical Clarity</h3>
+      <p>All-white, cool slate grays, strong typographic scale. Large score number as the hero element. Trust through restraint — like a medical records system built for 2026. Precision over decoration.</p>
+    </div>
+  </div>
+
+  <!-- Option C: Warm Data -->
+  <div class="card" data-choice="c" onclick="toggleSelect(this)">
+    <div class="card-image" style="background:#EEEDE9;padding:0;overflow:hidden;border-radius:6px 6px 0 0;">
+      <div style="background:#F9F7F4;border-bottom:1px solid #ddd9d0;padding:8px 12px;display:flex;justify-content:space-between;align-items:center;">
+        <span style="font-size:10px;font-weight:700;color:#0B2026;letter-spacing:.5px;">FacilityIQ</span>
+        <div style="display:flex;gap:8px;">
+          <span style="font-size:8px;color:#9ca3af;border-bottom:2px solid #FF3621;padding-bottom:1px;">Search</span>
+          <span style="font-size:8px;color:#9ca3af;">Shortlists</span>
+          <span style="font-size:8px;color:#9ca3af;">Flagged</span>
+        </div>
+      </div>
+      <div style="display:flex;height:172px;">
+        <!-- Warm list -->
+        <div style="width:140px;background:#F9F7F4;border-right:1px solid #ddd9d0;padding:8px;">
+          <div style="background:#EEEDE9;border-radius:6px;padding:3px 6px;font-size:7px;color:#6b7280;margin-bottom:6px;">🔍 Search...</div>
+          <div style="background:white;border:1px solid #ddd9d0;border-radius:5px;padding:6px 8px;margin-bottom:4px;box-shadow:0 1px 3px rgba(0,0,0,0.05);">
+            <div style="font-size:8px;font-weight:600;color:#0B2026;margin-bottom:2px;">Apollo Hospital</div>
+            <div style="font-size:7px;color:#9ca3af;margin-bottom:4px;">Maharashtra</div>
+            <div style="display:flex;align-items:center;justify-content:space-between;">
+              <div style="height:4px;background:#EEEDE9;border-radius:2px;flex:1;margin-right:6px;"><div style="height:100%;width:84%;background:#FF3621;border-radius:2px;"></div></div>
+              <span style="font-size:8px;font-weight:700;color:#FF3621;">84</span>
+            </div>
+          </div>
+          <div style="padding:6px 8px;margin-bottom:4px;">
+            <div style="font-size:8px;font-weight:500;color:#374151;margin-bottom:2px;">Kohinoor Hospital</div>
+            <div style="display:flex;align-items:center;justify-content:space-between;">
+              <div style="height:4px;background:#EEEDE9;border-radius:2px;flex:1;margin-right:6px;"><div style="height:100%;width:79%;background:#16a34a;border-radius:2px;"></div></div>
+              <span style="font-size:8px;font-weight:700;color:#16a34a;">79</span>
+            </div>
+          </div>
+        </div>
+        <!-- Warm detail panel -->
+        <div style="flex:1;background:white;padding:10px 12px;">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;">
+            <div>
+              <div style="font-size:11px;font-weight:700;color:#0B2026;">Apollo Hospital Mumbai</div>
+              <div style="font-size:8px;color:#9ca3af;margin-top:1px;">Maharashtra · Multi-Specialty</div>
+            </div>
+            <div style="background:#FF3621;color:white;border-radius:6px;padding:4px 8px;text-align:center;">
+              <div style="font-size:14px;font-weight:800;line-height:1;">84</div>
+              <div style="font-size:7px;opacity:0.85;font-weight:600;">HIGH</div>
+            </div>
+          </div>
+          <!-- Warm contradiction -->
+          <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:5px;padding:5px 7px;margin-bottom:6px;">
+            <div style="font-size:7px;color:#c2410c;font-weight:700;">⚠ CONTRADICTION — ICU availability</div>
+          </div>
+          <!-- Warm dimension cards -->
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;">
+            <div style="background:#F9F7F4;border-radius:5px;padding:5px 7px;">
+              <div style="font-size:7px;color:#6b7280;font-weight:600;margin-bottom:3px;">CAPABILITY</div>
+              <div style="display:flex;align-items:center;gap:4px;">
+                <div style="height:4px;background:#EEEDE9;border-radius:2px;flex:1;"><div style="height:100%;width:84%;background:#FF3621;border-radius:2px;"></div></div>
+                <span style="font-size:8px;font-weight:700;color:#FF3621;">84</span>
+              </div>
+            </div>
+            <div style="background:#F9F7F4;border-radius:5px;padding:5px 7px;">
+              <div style="font-size:7px;color:#6b7280;font-weight:600;margin-bottom:3px;">EQUIPMENT</div>
+              <div style="display:flex;align-items:center;gap:4px;">
+                <div style="height:4px;background:#EEEDE9;border-radius:2px;flex:1;"><div style="height:100%;width:61%;background:#f59e0b;border-radius:2px;"></div></div>
+                <span style="font-size:8px;font-weight:700;color:#f59e0b;">61</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>Warm Data <span style="font-size:0.75em;background:#e8f5e9;color:#2e7d32;padding:1px 6px;border-radius:3px;margin-left:6px;">Recommended</span></h3>
+      <p>Leans into the Databricks warm palette (#EEEDE9, #F9F7F4). Off-white backgrounds, navy + red accent system, card-based layout. Feels human and grounded — stands out from generic blue SaaS without going full dark mode.</p>
+    </div>
+  </div>
+
+</div>

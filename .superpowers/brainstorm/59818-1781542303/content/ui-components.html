@@ -1,0 +1,246 @@
+<h2>Split-panel UI — component breakdown</h2>
+<p class="subtitle">What lives in each zone. Click to confirm this looks right.</p>
+
+<div class="mockup" style="max-width:900px;margin:0 auto;">
+  <div class="mockup-header">FacilityIQ — full layout</div>
+  <div class="mockup-body" style="padding:0;overflow:hidden;">
+
+    <!-- Top nav -->
+    <div style="background:#0B2026;color:white;padding:10px 16px;display:flex;align-items:center;justify-content:space-between;">
+      <div style="font-size:13px;font-weight:700;letter-spacing:1px;">FACILITYIQ</div>
+      <div style="font-size:10px;opacity:0.6;">Facility Trust Desk · India · 10,000 records</div>
+    </div>
+
+    <div style="display:flex;height:580px;">
+
+      <!-- LEFT PANEL: Search + List -->
+      <div style="width:360px;min-width:360px;border-right:1px solid #e5e7eb;display:flex;flex-direction:column;background:#fafafa;">
+
+        <!-- Search bar -->
+        <div style="padding:12px;border-bottom:1px solid #e5e7eb;background:white;">
+          <div style="background:#f3f4f6;border:1px solid #e5e7eb;border-radius:6px;padding:6px 10px;font-size:11px;color:#9ca3af;display:flex;align-items:center;gap:6px;">
+            <span>🔍</span><span>Search facilities, specialties, locations...</span>
+          </div>
+        </div>
+
+        <!-- Filters row -->
+        <div style="padding:8px 12px;border-bottom:1px solid #e5e7eb;background:white;display:flex;gap:6px;flex-wrap:wrap;">
+          <div style="border:1px solid #e5e7eb;border-radius:4px;padding:3px 8px;font-size:9px;color:#374151;cursor:pointer;">State ▾</div>
+          <div style="border:1px solid #e5e7eb;border-radius:4px;padding:3px 8px;font-size:9px;color:#374151;cursor:pointer;">Type ▾</div>
+          <div style="border:1px solid #e5e7eb;border-radius:4px;padding:3px 8px;font-size:9px;color:#374151;cursor:pointer;">Min Trust ▾</div>
+          <div style="border:1px solid #FF3621;background:#fff5f4;border-radius:4px;padding:3px 8px;font-size:9px;color:#FF3621;cursor:pointer;">⚠ Contradictions only</div>
+        </div>
+
+        <!-- Results count -->
+        <div style="padding:6px 12px;font-size:9px;color:#9ca3af;background:#fafafa;">247 results · sorted by trust score</div>
+
+        <!-- Facility list -->
+        <div style="flex:1;overflow-y:auto;">
+
+          <!-- Selected item -->
+          <div style="padding:10px 12px;background:#fff5f4;border-left:3px solid #FF3621;cursor:pointer;">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px;">
+              <div>
+                <div style="font-size:11px;font-weight:600;color:#0B2026;">Apollo Hospital Mumbai</div>
+                <div style="font-size:9px;color:#6b7280;margin-top:1px;">Maharashtra · Multi-Specialty</div>
+              </div>
+              <div style="text-align:right;">
+                <div style="font-size:13px;font-weight:700;color:#16a34a;">84</div>
+                <div style="font-size:8px;color:#16a34a;">HIGH</div>
+              </div>
+            </div>
+            <div style="display:flex;gap:4px;flex-wrap:wrap;">
+              <div style="background:#dcfce7;color:#15803d;font-size:8px;padding:1px 5px;border-radius:3px;font-weight:500;">Capability ✓</div>
+              <div style="background:#ffedd5;color:#c2410c;font-size:8px;padding:1px 5px;border-radius:3px;font-weight:500;">⚠ Contradiction</div>
+            </div>
+          </div>
+
+          <!-- Normal items -->
+          <div style="padding:10px 12px;border-bottom:1px solid #f3f4f6;cursor:pointer;">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px;">
+              <div>
+                <div style="font-size:11px;font-weight:600;color:#0B2026;">Kohinoor Hospital</div>
+                <div style="font-size:9px;color:#6b7280;margin-top:1px;">Maharashtra · General</div>
+              </div>
+              <div style="text-align:right;">
+                <div style="font-size:13px;font-weight:700;color:#16a34a;">79</div>
+                <div style="font-size:8px;color:#16a34a;">HIGH</div>
+              </div>
+            </div>
+            <div style="display:flex;gap:4px;"><div style="background:#f3f4f6;color:#6b7280;font-size:8px;padding:1px 5px;border-radius:3px;">Shortlisted ★</div></div>
+          </div>
+
+          <div style="padding:10px 12px;border-bottom:1px solid #f3f4f6;cursor:pointer;">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+              <div>
+                <div style="font-size:11px;font-weight:600;color:#0B2026;">Lilavati Hospital</div>
+                <div style="font-size:9px;color:#6b7280;margin-top:1px;">Maharashtra · Multi-Specialty</div>
+              </div>
+              <div style="text-align:right;">
+                <div style="font-size:13px;font-weight:700;color:#ca8a04;">62</div>
+                <div style="font-size:8px;color:#ca8a04;">MEDIUM</div>
+              </div>
+            </div>
+          </div>
+
+          <div style="padding:10px 12px;border-bottom:1px solid #f3f4f6;cursor:pointer;">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+              <div>
+                <div style="font-size:11px;font-weight:600;color:#0B2026;">Nanavati Hospital</div>
+                <div style="font-size:9px;color:#6b7280;margin-top:1px;">Maharashtra · General</div>
+              </div>
+              <div style="text-align:right;">
+                <div style="font-size:13px;font-weight:700;color:#dc2626;">38</div>
+                <div style="font-size:8px;color:#dc2626;">LOW</div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Pagination -->
+        <div style="padding:8px 12px;border-top:1px solid #e5e7eb;background:white;display:flex;justify-content:space-between;align-items:center;">
+          <div style="font-size:9px;color:#9ca3af;">Page 1 of 10</div>
+          <div style="display:flex;gap:4px;">
+            <div style="border:1px solid #e5e7eb;border-radius:4px;padding:2px 8px;font-size:9px;color:#9ca3af;">← Prev</div>
+            <div style="border:1px solid #e5e7eb;border-radius:4px;padding:2px 8px;font-size:9px;color:#374151;">Next →</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- RIGHT PANEL: Scorecard + Workbench -->
+      <div style="flex:1;overflow-y:auto;background:white;">
+
+        <!-- Facility header -->
+        <div style="padding:16px 20px;border-bottom:1px solid #e5e7eb;">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+            <div>
+              <div style="font-size:15px;font-weight:700;color:#0B2026;">Apollo Hospital Mumbai</div>
+              <div style="font-size:10px;color:#6b7280;margin-top:2px;">Maharashtra · Multi-Specialty · Est. 1989</div>
+            </div>
+            <div style="text-align:right;">
+              <div style="font-size:22px;font-weight:700;color:#16a34a;">84</div>
+              <div style="font-size:9px;color:#16a34a;font-weight:600;">OVERALL TRUST · HIGH</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Contradiction alert -->
+        <div style="margin:12px 20px;background:#fff7ed;border:1px solid #fed7aa;border-radius:6px;padding:10px 12px;">
+          <div style="font-size:10px;font-weight:700;color:#c2410c;margin-bottom:4px;">⚠ CONTRADICTION DETECTED — HIGH SEVERITY</div>
+          <div style="font-size:9px;color:#7c3aed;background:#f5f3ff;border-radius:3px;padding:4px 6px;margin-bottom:4px;font-family:monospace;">icu_available = "Yes"</div>
+          <div style="font-size:9px;color:#374151;">Free text: <span style="font-style:italic;">"basic outpatient services only — no inpatient beds available at this location"</span></div>
+          <div style="font-size:9px;color:#c2410c;font-weight:600;margin-top:4px;">Do not rely on structured ICU field.</div>
+        </div>
+
+        <!-- Trust dimensions -->
+        <div style="padding:0 20px 12px;">
+          <div style="font-size:10px;font-weight:700;color:#0B2026;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Trust Dimensions</div>
+
+          <!-- Capability dimension (expanded) -->
+          <div style="border:1px solid #e5e7eb;border-radius:6px;margin-bottom:6px;overflow:hidden;">
+            <div style="padding:10px 12px;display:flex;align-items:center;gap:10px;background:#f9fafb;">
+              <div style="flex:1;">
+                <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+                  <span style="font-size:10px;font-weight:600;color:#0B2026;">CAPABILITY</span>
+                  <span style="font-size:10px;font-weight:700;color:#16a34a;">84 · HIGH</span>
+                </div>
+                <div style="height:6px;background:#e5e7eb;border-radius:3px;"><div style="height:100%;width:84%;background:#16a34a;border-radius:3px;"></div></div>
+              </div>
+              <span style="font-size:10px;color:#9ca3af;">▲</span>
+            </div>
+            <!-- Evidence panel (expanded) -->
+            <div style="padding:10px 12px;border-top:1px solid #e5e7eb;background:white;">
+              <div style="font-size:9px;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Evidence</div>
+              <div style="background:#f0fdf4;border-left:3px solid #16a34a;padding:8px 10px;border-radius:0 4px 4px 0;font-size:9px;color:#374151;font-style:italic;margin-bottom:4px;">
+                "Equipped with dialysis units and nephrology consultation services available on-site, with dedicated ICU support for complex cases."
+              </div>
+              <div style="font-size:8px;color:#9ca3af;">Source field: <span style="font-family:monospace;color:#6b7280;">description</span></div>
+            </div>
+          </div>
+
+          <!-- Equipment dimension (collapsed) -->
+          <div style="border:1px solid #e5e7eb;border-radius:6px;margin-bottom:6px;">
+            <div style="padding:10px 12px;display:flex;align-items:center;gap:10px;">
+              <div style="flex:1;">
+                <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+                  <span style="font-size:10px;font-weight:600;color:#0B2026;">EQUIPMENT</span>
+                  <span style="font-size:10px;font-weight:700;color:#ca8a04;">61 · MEDIUM</span>
+                </div>
+                <div style="height:6px;background:#e5e7eb;border-radius:3px;"><div style="height:100%;width:61%;background:#ca8a04;border-radius:3px;"></div></div>
+              </div>
+              <span style="font-size:10px;color:#9ca3af;">▼</span>
+            </div>
+          </div>
+
+          <!-- Procedure dimension (collapsed) -->
+          <div style="border:1px solid #e5e7eb;border-radius:6px;margin-bottom:6px;">
+            <div style="padding:10px 12px;display:flex;align-items:center;gap:10px;">
+              <div style="flex:1;">
+                <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+                  <span style="font-size:10px;font-weight:600;color:#0B2026;">PROCEDURE</span>
+                  <span style="font-size:10px;font-weight:700;color:#16a34a;">79 · HIGH</span>
+                </div>
+                <div style="height:6px;background:#e5e7eb;border-radius:3px;"><div style="height:100%;width:79%;background:#16a34a;border-radius:3px;"></div></div>
+              </div>
+              <span style="font-size:10px;color:#9ca3af;">▼</span>
+            </div>
+          </div>
+
+          <!-- Completeness — insufficient data -->
+          <div style="border:1px solid #fde68a;border-radius:6px;margin-bottom:6px;background:#fffbeb;">
+            <div style="padding:10px 12px;">
+              <div style="display:flex;justify-content:space-between;align-items:center;">
+                <span style="font-size:10px;font-weight:600;color:#0B2026;">COMPLETENESS</span>
+                <span style="background:#fef3c7;color:#92400e;font-size:9px;font-weight:600;padding:2px 7px;border-radius:3px;">INSUFFICIENT DATA</span>
+              </div>
+              <div style="font-size:9px;color:#92400e;margin-top:4px;">capacity field has 25% dataset coverage — score suppressed. Do not use for planning.</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Analyst Workbench -->
+        <div style="margin:0 20px 20px;border:1px solid #e5e7eb;border-radius:6px;overflow:hidden;">
+          <div style="background:#0B2026;color:white;padding:8px 12px;font-size:10px;font-weight:600;letter-spacing:.5px;">ANALYST WORKBENCH</div>
+          <div style="padding:12px;display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+            <div style="border:1px solid #e5e7eb;border-radius:5px;padding:8px;">
+              <div style="font-size:9px;font-weight:600;color:#374151;margin-bottom:4px;">📝 Notes</div>
+              <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:4px;padding:4px 6px;font-size:9px;color:#6b7280;font-style:italic;">"Follow up — ICU claim needs phone verification before referral."</div>
+            </div>
+            <div style="border:1px solid #e5e7eb;border-radius:5px;padding:8px;">
+              <div style="font-size:9px;font-weight:600;color:#374151;margin-bottom:4px;">✏️ Override Score</div>
+              <div style="font-size:9px;color:#9ca3af;">Override any dimension score with a reason.</div>
+              <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:4px;padding:4px 6px;font-size:9px;color:#9ca3af;margin-top:4px;">Select dimension...</div>
+            </div>
+            <div style="border:1px solid #e5e7eb;border-radius:5px;padding:8px;">
+              <div style="font-size:9px;font-weight:600;color:#374151;margin-bottom:4px;">⊞ Shortlist</div>
+              <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:4px;padding:4px 6px;font-size:9px;color:#1d4ed8;">★ Added to "Maharashtra Dialysis"</div>
+            </div>
+            <div style="border:1px solid #e5e7eb;border-radius:5px;padding:8px;">
+              <div style="font-size:9px;font-weight:600;color:#374151;margin-bottom:4px;">⚑ Flag for Review</div>
+              <div style="background:#fff1f2;border:1px solid #fecdd3;border-radius:4px;padding:4px 6px;font-size:9px;color:#e11d48;">Flagged — manual review required</div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="options" style="margin-top:20px;">
+  <div class="option" data-choice="yes" onclick="toggleSelect(this)">
+    <div class="letter">✓</div>
+    <div class="content">
+      <h3>This looks right — approve UI design</h3>
+      <p>Split panel, trust dimensions with expandable evidence, contradiction alert, insufficient-data badge, workbench with notes/override/shortlist/flag.</p>
+    </div>
+  </div>
+  <div class="option" data-choice="adjust" onclick="toggleSelect(this)">
+    <div class="letter">✎</div>
+    <div class="content">
+      <h3>I want to adjust something</h3>
+      <p>Let me know what in the terminal and I'll revise.</p>
+    </div>
+  </div>
+</div>
