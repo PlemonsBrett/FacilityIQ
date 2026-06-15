@@ -7,11 +7,13 @@ targets:
   dev:
     mode: development
     default: true
-    variables:
-      catalog_name: dev
+# TODO
+#    variables:
+#      catalog_name: dev
   prod:
     mode: production
     workspace:
       host: https://dbc-9924376b-eaa9.cloud.databricks.com
-    variables:
-      catalog_name: workspace
+# TODO
+#    variables:
+#      catalog_name: workspace
