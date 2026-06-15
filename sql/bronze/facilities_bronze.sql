@@ -1,0 +1,48 @@
+-- BRONZE: faithful landing of the raw facility export (39 columns).
+-- Minimal transformation — types stay as source, only an ingestion timestamp is added.
+-- Adjust the workspace.facilityiq target schema if your catalog/schema differ.
+
+CREATE OR REPLACE TABLE workspace.facilityiq.facilities_bronze
+USING DELTA AS
+SELECT
+  unique_id,
+  name,
+  organization_type,
+  content_table_id,
+  officialPhone,
+  email,
+  officialWebsite,
+  yearEstablished,
+  acceptsVolunteers,
+  facebookLink,
+  address_line1,
+  address_line2,
+  address_line3,
+  address_city,
+  address_stateOrRegion,
+  address_zipOrPostcode,
+  address_country,
+  address_countryCode,
+  countries,
+  facilityTypeId,
+  operatorTypeId,
+  affiliationTypeIds,
+  description,
+  area,
+  numberDoctors,
+  capacity,
+  recency_of_page_update,
+  distinct_social_media_presence_count,
+  affiliated_staff_presence,
+  custom_logo_presence,
+  number_of_facts_about_the_organization,
+  post_metrics_most_recent_social_media_post_date,
+  post_metrics_post_count,
+  engagement_metrics_n_followers,
+  engagement_metrics_n_likes,
+  engagement_metrics_n_engagements,
+  source,
+  latitude,
+  longitude,
+  current_timestamp() AS _bronze_loaded_at
+FROM databricks_virtue_foundation_dataset_dais_2026.virtue_foundation_dataset.facilities;
