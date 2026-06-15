@@ -1,9 +1,20 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
-import type { FacilityDetail } from "../types";
+import type { FacilityDetail, ReviewStatus } from "../types";
 import { overallScore, scoreToInt, trustColor, trustLabel } from "../types";
 import Workbench from "./Workbench";
-import { postAction } from "../lib/api";
+import { postAction, fetchReviewStatus, postReviewStatus } from "../lib/api";
+
+// ── Review status config ──────────────────────────────────────────────────────
+
+const REVIEW_STATUS_CONFIG: Record<ReviewStatus, { label: string; color: string }> = {
+  not_started:         { label: "Not Started", color: "#94a3b8" },
+  in_progress:         { label: "In Review",   color: "#60a5fa" },
+  email_sent:          { label: "Email Sent",  color: "#a78bfa" },
+  called:              { label: "Called",       color: "#fb923c" },
+  parked:              { label: "Parked",       color: "#64748b" },
+  validation_complete: { label: "Validated",    color: "#4ade80" },
+};
 
 // ── Local types ───────────────────────────────────────────────────────────────
 
@@ -537,6 +548,61 @@ function OverrideModal({
   );
 }
 
+// ── ParkedStatusModal ─────────────────────────────────────────────────────────
+
+function ParkedStatusModal({
+  onConfirm,
+  onCancel,
+}: {
+  onConfirm: (reason: string) => void;
+  onCancel: () => void;
+}) {
+  const [reason, setReason] = useState("");
+  return createPortal(
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center"
+      style={{ background: "rgba(0,0,0,0.5)" }}
+      onClick={(e) => { if (e.target === e.currentTarget) onCancel(); }}
+    >
+      <div
+        className="w-full max-w-sm mx-4 rounded-2xl p-6 shadow-2xl"
+        style={{ background: "var(--fiq-bg-surface)", border: "1px solid var(--fiq-border)" }}
+      >
+        <h3 className="font-semibold text-sm mb-1" style={{ color: "var(--fiq-text)" }}>Park for Later</h3>
+        <p className="text-xs mb-4" style={{ color: "var(--fiq-text-faintest)" }}>
+          Provide a reason — visible on the Kanban board.
+        </p>
+        <textarea
+          value={reason}
+          onChange={(e) => setReason(e.target.value)}
+          placeholder="Reason for parking (required)"
+          rows={3}
+          className="w-full rounded-lg px-3 py-2 text-sm resize-none outline-none mb-4"
+          style={{ background: "var(--fiq-bg-input)", border: "1px solid var(--fiq-border-strong)", color: "var(--fiq-text)" }}
+        />
+        <div className="flex justify-end gap-2">
+          <button
+            onClick={onCancel}
+            className="px-4 py-1.5 text-xs font-semibold rounded-lg border"
+            style={{ borderColor: "var(--fiq-border)", color: "var(--fiq-text-faintest)" }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={() => reason.trim() && onConfirm(reason.trim())}
+            disabled={!reason.trim()}
+            className="px-4 py-1.5 text-xs font-semibold rounded-lg disabled:opacity-40"
+            style={{ background: "var(--fiq-text)", color: "var(--fiq-bg)" }}
+          >
+            Park
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
 // ── GuidedAnalysis (main export) ──────────────────────────────────────────────
 
 interface Props {
@@ -549,6 +615,33 @@ export default function GuidedAnalysis({ detail, analystId }: Props) {
   const [showAll, setShowAll] = useState(false);
   const [flagOpen, setFlagOpen] = useState(false);
   const [overrideDim, setOverrideDim] = useState<string | null>(null);
+
+  const [reviewStatus, setReviewStatus] = useState<ReviewStatus>("not_started");
+  const [_reviewParkedReason, setReviewParkedReason] = useState<string | null>(null);
+  const [statusMenuOpen, setStatusMenuOpen] = useState(false);
+  const [parkingFromStatus, setParkingFromStatus] = useState(false);
+
+  useEffect(() => {
+    fetchReviewStatus(facility.facility_id).then((r) => {
+      setReviewStatus(r.status);
+      setReviewParkedReason(r.parked_reason);
+    });
+  }, [facility.facility_id]);
+
+  async function handleStatusChange(toStatus: ReviewStatus) {
+    setStatusMenuOpen(false);
+    if (toStatus === "parked") { setParkingFromStatus(true); return; }
+    setReviewStatus(toStatus);
+    setReviewParkedReason(null);
+    await postReviewStatus(facility.facility_id, toStatus);
+  }
+
+  async function confirmParkedStatus(reason: string) {
+    setParkingFromStatus(false);
+    setReviewStatus("parked");
+    setReviewParkedReason(reason);
+    await postReviewStatus(facility.facility_id, "parked", reason);
+  }
 
   const containerRef = useRef<HTMLDivElement>(null);
   const bubbleRefs = useRef<Map<string, HTMLDivElement>>(new Map());
@@ -705,6 +798,37 @@ export default function GuidedAnalysis({ detail, analystId }: Props) {
             >
               ⚑ Flag for Review
             </button>
+            <div className="relative mt-2">
+              <button
+                onClick={() => setStatusMenuOpen((o) => !o)}
+                className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full border transition-colors"
+                style={{
+                  color: REVIEW_STATUS_CONFIG[reviewStatus].color,
+                  borderColor: REVIEW_STATUS_CONFIG[reviewStatus].color,
+                  background: `${REVIEW_STATUS_CONFIG[reviewStatus].color}14`,
+                }}
+              >
+                ● {REVIEW_STATUS_CONFIG[reviewStatus].label}
+              </button>
+              {statusMenuOpen && (
+                <div
+                  className="absolute right-0 top-full mt-1 rounded-xl overflow-hidden z-30 shadow-xl"
+                  style={{ minWidth: 160, background: "var(--fiq-bg-surface)", border: "1px solid var(--fiq-border)" }}
+                >
+                  {(Object.keys(REVIEW_STATUS_CONFIG) as ReviewStatus[]).map((s) => (
+                    <button
+                      key={s}
+                      onClick={() => handleStatusChange(s)}
+                      className="w-full text-left flex items-center gap-2 px-3 py-2 text-[11px] transition-opacity hover:opacity-70"
+                      style={{ color: s === reviewStatus ? REVIEW_STATUS_CONFIG[s].color : "var(--fiq-text-muted)", fontWeight: s === reviewStatus ? 700 : 400 }}
+                    >
+                      <span style={{ color: REVIEW_STATUS_CONFIG[s].color }}>●</span>
+                      {REVIEW_STATUS_CONFIG[s].label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
@@ -763,6 +887,12 @@ export default function GuidedAnalysis({ detail, analystId }: Props) {
 
       {flagOpen && (
         <FlagModal facilityId={facility.facility_id} analystId={analystId} onClose={() => setFlagOpen(false)} />
+      )}
+      {parkingFromStatus && (
+        <ParkedStatusModal
+          onConfirm={confirmParkedStatus}
+          onCancel={() => setParkingFromStatus(false)}
+        />
       )}
       {overrideDim && (
         <OverrideModal

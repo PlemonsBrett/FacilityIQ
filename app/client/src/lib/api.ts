@@ -8,6 +8,7 @@ import {
   getLocalBoardColumn,
   setLocalKanbanStatus,
   getLocalUnstartedFacilities,
+  getLocalReviewEntry,
 } from "./dummy";
 
 async function tryFetch<T>(url: string, init?: RequestInit): Promise<T | null> {
@@ -146,4 +147,17 @@ export async function postReviewStatus(
   if (result === null) {
     setLocalKanbanStatus(facilityId, status, parked_reason, notes);
   }
+}
+
+export async function fetchReviewStatus(
+  facilityId: string,
+): Promise<{ status: ReviewStatus; parked_reason: string | null }> {
+  const result = await tryFetch<{ status: ReviewStatus; parked_reason: string | null }>(
+    `/api/review/${facilityId}`,
+  );
+  if (result !== null) return { status: result.status, parked_reason: result.parked_reason ?? null };
+  const local = getLocalReviewEntry(facilityId);
+  return local
+    ? { status: local.status as ReviewStatus, parked_reason: local.parked_reason }
+    : { status: "not_started", parked_reason: null };
 }

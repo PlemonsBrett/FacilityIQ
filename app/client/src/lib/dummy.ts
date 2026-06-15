@@ -613,3 +613,16 @@ export function getLocalUnstartedFacilities(): ReviewCard[] {
       updated_at: new Date().toISOString(),
     }));
 }
+
+export function getLocalReviewEntry(
+  facilityId: string,
+): { status: string; parked_reason: string | null } | null {
+  try {
+    const raw = localStorage.getItem("fiq_kanban");
+    const board = raw ? (JSON.parse(raw) as Record<string, { status: string; parked_reason: string | null }>) : {};
+    const entry = board[facilityId];
+    return entry ? { status: entry.status, parked_reason: entry.parked_reason ?? null } : null;
+  } catch {
+    return null;
+  }
+}
