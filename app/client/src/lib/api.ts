@@ -26,8 +26,16 @@ export interface FacilitiesParams {
   contradictionsOnly: boolean;
 }
 
+// null = unknown, true = real data exists, false = DB empty → use dummy
+let _facilityDataAvailable: boolean | null = null;
+
 export async function fetchFacilities(params: FacilitiesParams): Promise<FacilityListItem[]> {
   const { q, page, limit, state, facilityType, contradictionsOnly } = params;
+
+  if (_facilityDataAvailable === false) {
+    return filterDummyList(q, state, facilityType, contradictionsOnly, page, limit);
+  }
+
   const qs = new URLSearchParams({
     q,
     page: String(page),
@@ -37,12 +45,24 @@ export async function fetchFacilities(params: FacilitiesParams): Promise<Facilit
     ...(contradictionsOnly ? { contradictions_only: "true" } : {}),
   });
   const result = await tryFetch<FacilityListItem[]>(`/api/facilities?${qs}`);
-  // Fall back to dummy when: API failed (null) OR the base unfiltered query returned no rows
-  // (indicates the DB table is empty). Allow empty arrays through when filters are active
-  // so "no results" renders correctly once real data is present.
-  const isBaseQuery = !q && !state && !facilityType && !contradictionsOnly && page === 1;
-  if (result !== null && (result.length > 0 || !isBaseQuery)) return result;
-  return filterDummyList(q, state, facilityType, contradictionsOnly, page, limit);
+
+  if (result === null) {
+    _facilityDataAvailable = false;
+    return filterDummyList(q, state, facilityType, contradictionsOnly, page, limit);
+  }
+  if (result.length > 0) {
+    _facilityDataAvailable = true;
+    return result;
+  }
+
+  // Empty result — if we haven't confirmed real data exists yet, treat DB as empty
+  if (_facilityDataAvailable === null) {
+    _facilityDataAvailable = false;
+    return filterDummyList(q, state, facilityType, contradictionsOnly, page, limit);
+  }
+
+  // DB has real data; this is a valid empty filtered result
+  return result;
 }
 
 export async function fetchMeta(): Promise<{ states: string[]; facility_types: string[] }> {

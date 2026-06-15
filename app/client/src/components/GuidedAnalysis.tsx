@@ -752,7 +752,7 @@ export default function GuidedAnalysis({ detail, analystId }: Props) {
         </div>
 
         {/* Workbench (notes only) */}
-        <Workbench facilityId={facility.facility_id} analystId={analystId} signals={trust_signals} />
+        <Workbench facilityId={facility.facility_id} analystId={analystId} />
       </div>
 
       {flagOpen && (

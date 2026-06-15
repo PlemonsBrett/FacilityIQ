@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import type { FacilityDetail } from "./types";
 import SearchPanel from "./components/SearchPanel";
-import ScoreCard from "./components/ScoreCard";
+import GuidedAnalysis from "./components/GuidedAnalysis";
 import Sidebar from "./components/Sidebar";
 import DashboardPage from "./pages/DashboardPage";
 import QueuePage from "./pages/QueuePage";
@@ -51,7 +51,7 @@ export default function App() {
             {loadingDetail ? (
               <div style={{ padding: 32, color: "var(--fiq-text-faintest)", fontSize: 13 }}>Loading...</div>
             ) : detail ? (
-              <ScoreCard detail={detail} analystId={ANALYST_ID} />
+              <GuidedAnalysis detail={detail} analystId={ANALYST_ID} />
             ) : (
               <div style={{
                 display: "flex", flexDirection: "column", alignItems: "center",
