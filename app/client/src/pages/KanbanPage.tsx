@@ -2,8 +2,8 @@ import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import {
   DndContext,
-  DragEndEvent,
-  DragStartEvent,
+  type DragEndEvent,
+  type DragStartEvent,
   DragOverlay,
   PointerSensor,
   useSensor,
