@@ -93,20 +93,26 @@ function buildFields(detail: FacilityDetail): FacilityField[] {
       });
   }
 
-  const capStr = facility.capacity?.toString() ?? null;
+  const capStr  = facility.capacity?.toString() ?? null;
   const yearStr = facility.year_established?.toString() ?? null;
+  const docStr  = facility.number_doctors?.toString() ?? null;
 
   return [
-    { label: "Facility Name",    value: facility.facility_name,  category: "Identity" },
-    { label: "City",             value: facility.district,       category: "Identity" },
-    { label: "State",            value: facility.state,          category: "Identity" },
-    { label: "Facility Type",    value: facility.facility_type,  category: "Identity" },
-    { label: "Description",      value: facility.description,    category: "Identity", highlights: getDescriptionHighlights() },
-    { label: "Capability",       value: facility.capability,     category: "Clinical", highlights: getHighlights("capability", facility.capability) },
-    { label: "Equipment",        value: facility.equipment,      category: "Clinical", highlights: getHighlights("equipment", facility.equipment) },
-    { label: "Procedure",        value: facility.procedure,      category: "Clinical", highlights: getHighlights("procedure", facility.procedure) },
-    { label: "Bed Capacity",     value: capStr,                  category: "Capacity", highlights: getHighlights("capacity", capStr), missing: capStr === null },
-    { label: "Year Established", value: yearStr,                 category: "Capacity", missing: yearStr === null },
+    { label: "Facility Name",    value: facility.facility_name,    category: "Identity" },
+    { label: "City",             value: facility.district,         category: "Identity" },
+    { label: "State",            value: facility.state,            category: "Identity" },
+    { label: "Facility Type",    value: facility.facility_type,    category: "Identity" },
+    { label: "Phone",            value: facility.official_phone,   category: "Identity" },
+    { label: "Email",            value: facility.email,            category: "Identity" },
+    { label: "Website",          value: facility.official_website, category: "Identity" },
+    { label: "Address",          value: facility.address_line1,    category: "Identity" },
+    { label: "Description",      value: facility.description,      category: "Identity", highlights: getDescriptionHighlights() },
+    { label: "Capability",       value: facility.capability,       category: "Clinical", highlights: getHighlights("capability", facility.capability) },
+    { label: "Equipment",        value: facility.equipment,        category: "Clinical", highlights: getHighlights("equipment", facility.equipment) },
+    { label: "Procedure",        value: facility.procedure,        category: "Clinical", highlights: getHighlights("procedure", facility.procedure) },
+    { label: "Bed Capacity",     value: capStr,                    category: "Capacity", highlights: getHighlights("capacity", capStr), missing: capStr === null },
+    { label: "Doctors",          value: docStr,                    category: "Capacity", missing: docStr === null },
+    { label: "Year Established", value: yearStr,                   category: "Capacity", missing: yearStr === null },
   ];
 }
 

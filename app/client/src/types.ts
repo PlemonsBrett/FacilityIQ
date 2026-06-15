@@ -35,6 +35,12 @@ export interface FacilityDetail {
     equipment: string | null;
     capacity: number | null;
     year_established: number | null;
+    number_doctors: number | null;
+    official_phone: string | null;
+    email: string | null;
+    official_website: string | null;
+    address_line1: string | null;
+    overridden_fields: string[];
   };
   trust_signals: TrustSignal[];
 }

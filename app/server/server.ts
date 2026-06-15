@@ -54,10 +54,10 @@ createApp({
         try {
           const [statesResult, typesResult] = await Promise.all([
             appkit.lakebase.query(
-              `SELECT DISTINCT state FROM public.facilities WHERE state IS NOT NULL ORDER BY state`
+              `SELECT DISTINCT address_state_or_region AS state FROM public.facilities WHERE address_state_or_region IS NOT NULL ORDER BY address_state_or_region`
             ),
             appkit.lakebase.query(
-              `SELECT DISTINCT facility_type FROM public.facilities WHERE facility_type IS NOT NULL ORDER BY facility_type`
+              `SELECT DISTINCT facility_type_id AS facility_type FROM public.facilities WHERE facility_type_id IS NOT NULL ORDER BY facility_type_id`
             ),
           ]);
           res.json({
@@ -85,23 +85,23 @@ createApp({
 
           const { rows } = await appkit.lakebase.query(`
             SELECT
-              f.facility_id,
-              f.facility_name,
-              f.state,
-              f.facility_type,
-              AVG(t.trust_score)::real AS overall_trust_score,
+              f.unique_id                          AS facility_id,
+              f.name                               AS facility_name,
+              f.address_state_or_region            AS state,
+              f.facility_type_id                   AS facility_type,
+              AVG(t.trust_score)::real             AS overall_trust_score,
               MAX(CASE WHEN t.contradiction THEN 1 ELSE 0 END)::int AS has_contradiction,
-              COUNT(t.dimension)::int AS signal_count
+              COUNT(t.dimension)::int              AS signal_count
             FROM public.facilities f
-            LEFT JOIN public.trust_signals t ON f.facility_id = t.facility_id
+            LEFT JOIN public.trust_signals t ON f.unique_id = t.facility_id
             WHERE ($1::text IS NULL OR
-              f.facility_name ILIKE $1 OR
+              f.name ILIKE $1 OR
               f.description ILIKE $1 OR
               f.capability ILIKE $1 OR
-              f.state ILIKE $1)
-              AND ($2::text = '' OR f.state = $2)
-              AND ($3::text = '' OR f.facility_type = $3)
-            GROUP BY f.facility_id, f.facility_name, f.state, f.facility_type
+              f.address_state_or_region ILIKE $1)
+              AND ($2::text = '' OR f.address_state_or_region = $2)
+              AND ($3::text = '' OR f.facility_type_id = $3)
+            GROUP BY f.unique_id, f.name, f.address_state_or_region, f.facility_type_id
             HAVING ($4 = 0 OR COALESCE(AVG(t.trust_score), 0) >= $4)
                AND ($5 = false OR MAX(CASE WHEN t.contradiction THEN 1 ELSE 0 END) = 1)
             ORDER BY overall_trust_score DESC NULLS LAST
@@ -121,10 +121,25 @@ createApp({
           const { id } = req.params;
           const [fr, sr] = await Promise.all([
             appkit.lakebase.query(
-              `SELECT facility_id, facility_name, facility_type, state, district,
-                      description, capability, procedure, equipment,
-                      capacity, year_established
-               FROM public.facilities WHERE facility_id = $1`, [id]),
+              `SELECT
+                      unique_id                    AS facility_id,
+                      name                         AS facility_name,
+                      facility_type_id             AS facility_type,
+                      address_state_or_region      AS state,
+                      address_city                 AS district,
+                      description,
+                      capability,
+                      procedure,
+                      equipment,
+                      capacity,
+                      year_established,
+                      number_doctors,
+                      official_phone,
+                      email,
+                      official_website,
+                      address_line1,
+                      overridden_fields
+               FROM public.facilities WHERE unique_id = $1`, [id]),
             appkit.lakebase.query(
               `SELECT * FROM public.trust_signals
                WHERE facility_id = $1 ORDER BY dimension`, [id]),
