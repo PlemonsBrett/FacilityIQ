@@ -125,7 +125,7 @@ function measureBubble(el: HTMLDivElement): number {
 }
 
 function clearBubble(el: HTMLDivElement) {
-  el.style.cssText = "";
+  el.style.cssText = "display:none;";
 }
 
 function placeBubble(
