@@ -28,10 +28,17 @@ resources:
             permission: CAN_CONNECT_AND_CREATE
 
 targets:
-  default:
+  dev:
+    mode: development
     default: true
     workspace:
       host: https://dbc-9924376b-eaa9.cloud.databricks.com
+      root_path: ~/.bundle/${bundle.name}/dev
+    variables:
+      postgres_branch: projects/facilityiq/branches/production
+      postgres_database: projects/facilityiq/branches/production/databases/databricks-postgres
+      postgres_project: projects/facilityiq
+
   prod:
     mode: production
     workspace:
