@@ -1,10 +1,13 @@
-import type { FacilityListItem, FacilityDetail, UserAction } from "../types";
+import type { FacilityListItem, FacilityDetail, UserAction, ReviewCard, ReviewStatus } from "../types";
 import {
   filterDummyList,
   DUMMY_DETAILS,
   DUMMY_META,
   latestLocalActions,
   saveLocalAction,
+  getLocalBoardColumn,
+  setLocalKanbanStatus,
+  getLocalUnstartedFacilities,
 } from "./dummy";
 
 async function tryFetch<T>(url: string, init?: RequestInit): Promise<T | null> {
@@ -115,4 +118,31 @@ export async function postAction(
     dimension ?? null,
     override_score ?? null,
   );
+}
+
+export async function fetchBoardColumn(status: ReviewStatus): Promise<ReviewCard[]> {
+  if (status === "not_started") {
+    const result = await tryFetch<ReviewCard[]>("/api/review/board/unstarted?limit=50");
+    if (result !== null) return result;
+    return getLocalUnstartedFacilities();
+  }
+  const result = await tryFetch<ReviewCard[]>(`/api/review/board?status=${status}&limit=200`);
+  if (result !== null) return result;
+  return getLocalBoardColumn(status);
+}
+
+export async function postReviewStatus(
+  facilityId: string,
+  status: ReviewStatus,
+  parked_reason: string | null = null,
+  notes: string | null = null,
+): Promise<void> {
+  const result = await tryFetch<ReviewCard>(`/api/review/${facilityId}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ status, parked_reason, notes }),
+  });
+  if (result === null) {
+    setLocalKanbanStatus(facilityId, status, parked_reason, notes);
+  }
 }

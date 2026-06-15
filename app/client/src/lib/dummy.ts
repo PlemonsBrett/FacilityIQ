@@ -1,4 +1,4 @@
-import type { FacilityListItem, FacilityDetail, TrustSignal, UserAction } from "../types";
+import type { FacilityListItem, FacilityDetail, TrustSignal, UserAction, ReviewCard, ReviewStatus } from "../types";
 
 const NOW = new Date().toISOString();
 
@@ -539,4 +539,77 @@ export function latestLocalActions(facilityId: string, analystId: string): UserA
     if (!existing || a.updated_at > existing.updated_at) map.set(key, a);
   }
   return [...map.values()];
+}
+
+// ── Kanban board localStorage fallback ────────────────────────────────────────
+
+const KANBAN_LS_KEY = "fiq_kanban";
+
+interface LocalReviewEntry {
+  status: string;
+  parked_reason: string | null;
+  notes: string | null;
+  updated_at: string;
+}
+
+function getLocalKanbanBoard(): Record<string, LocalReviewEntry> {
+  try {
+    const raw = localStorage.getItem(KANBAN_LS_KEY);
+    return raw ? (JSON.parse(raw) as Record<string, LocalReviewEntry>) : {};
+  } catch {
+    return {};
+  }
+}
+
+export function setLocalKanbanStatus(
+  facilityId: string,
+  status: string,
+  parked_reason: string | null = null,
+  notes: string | null = null,
+): void {
+  const board = getLocalKanbanBoard();
+  board[facilityId] = { status, parked_reason, notes, updated_at: new Date().toISOString() };
+  try {
+    localStorage.setItem(KANBAN_LS_KEY, JSON.stringify(board));
+  } catch {}
+}
+
+export function getLocalBoardColumn(status: string): ReviewCard[] {
+  const board = getLocalKanbanBoard();
+  return Object.entries(board)
+    .filter(([, v]) => v.status === status)
+    .map(([id, v]) => {
+      const f = DUMMY_LIST.find((f) => f.facility_id === id);
+      return {
+        facility_id: id,
+        facility_name: f?.facility_name ?? id,
+        facility_type: f?.facility_type ?? null,
+        state: f?.state ?? null,
+        status: v.status as ReviewStatus,
+        parked_reason: v.parked_reason,
+        assigned_to: null,
+        notes: v.notes,
+        updated_by: null,
+        updated_at: v.updated_at,
+      };
+    });
+}
+
+export function getLocalUnstartedFacilities(): ReviewCard[] {
+  const board = getLocalKanbanBoard();
+  const inBoard = new Set(Object.keys(board));
+  return DUMMY_LIST.filter((f) => !inBoard.has(f.facility_id))
+    .slice(0, 50)
+    .map((f) => ({
+      facility_id: f.facility_id,
+      facility_name: f.facility_name,
+      facility_type: f.facility_type,
+      state: f.state,
+      status: "not_started" as ReviewStatus,
+      parked_reason: null,
+      assigned_to: null,
+      notes: null,
+      updated_by: null,
+      updated_at: new Date().toISOString(),
+    }));
 }
