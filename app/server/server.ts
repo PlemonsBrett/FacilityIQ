@@ -24,8 +24,24 @@ createApp({
         );
         CREATE INDEX IF NOT EXISTS idx_ua_facility_analyst
           ON facilityiq.user_actions (facility_id, analyst_id, action_type, updated_at DESC);
+
+        CREATE TABLE IF NOT EXISTS facilityiq.facility_review (
+          facility_id   TEXT PRIMARY KEY,
+          status        TEXT NOT NULL DEFAULT 'not_started'
+                        CHECK (status IN ('not_started','in_progress','email_sent',
+                                          'called','parked','validation_complete')),
+          parked_reason TEXT,
+          assigned_to   TEXT,
+          notes         TEXT,
+          updated_by    TEXT,
+          updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          CONSTRAINT parked_requires_reason
+            CHECK (status <> 'parked' OR parked_reason IS NOT NULL)
+        );
+        CREATE INDEX IF NOT EXISTS idx_fr_status
+          ON facilityiq.facility_review (status, updated_at DESC);
       `);
-      console.log('[facilityiq] Schema and user_actions table ready');
+      console.log('[facilityiq] Schema, user_actions, and facility_review tables ready');
     } catch (err) {
       console.warn('[facilityiq] Schema init failed:', (err as Error).message);
       console.warn('[facilityiq] Routes will be registered but writes may fail until schema is ready');
@@ -176,6 +192,89 @@ createApp({
         } catch (err) {
           console.error('Failed to save action:', err);
           res.status(500).json({ error: 'Failed to save action' });
+        }
+      });
+
+      // GET /api/review/board?status=<stage>&limit=500 — kanban cards (facilities in review)
+      app.get('/api/review/board', async (req, res) => {
+        try {
+          const status = req.query.status ? String(req.query.status) : null;
+          const limit = Math.min(Number(req.query.limit ?? 500), 2000);
+          const params: unknown[] = [];
+          let where = '';
+          if (status) {
+            params.push(status);
+            where = `WHERE r.status = $${params.length}`;
+          }
+          params.push(limit);
+          const { rows } = await appkit.lakebase.query(`
+            SELECT r.facility_id, f.facility_name, f.facility_type, f.state,
+                   r.status, r.parked_reason, r.assigned_to, r.notes,
+                   r.updated_by, r.updated_at
+            FROM facilityiq.facility_review r
+            LEFT JOIN public.facilities f ON f.facility_id = r.facility_id
+            ${where}
+            ORDER BY r.updated_at DESC
+            LIMIT $${params.length}
+          `, params);
+          res.json(rows);
+        } catch (err) {
+          console.error('Failed to fetch review board:', err);
+          res.status(500).json({ error: 'Failed to fetch review board' });
+        }
+      });
+
+      // GET /api/review/:facilityId — one facility's review state (defaults to not_started)
+      app.get('/api/review/:facilityId', async (req, res) => {
+        try {
+          const { facilityId } = req.params;
+          const { rows } = await appkit.lakebase.query(
+            `SELECT * FROM facilityiq.facility_review WHERE facility_id = $1`, [facilityId]);
+          res.json(rows[0] ?? { facility_id: facilityId, status: 'not_started' });
+        } catch (err) {
+          console.error('Failed to fetch review:', err);
+          res.status(500).json({ error: 'Failed to fetch review' });
+        }
+      });
+
+      // POST /api/review/:facilityId — move card / set stage (upsert)
+      app.post('/api/review/:facilityId', async (req, res) => {
+        try {
+          const { facilityId } = req.params;
+          const schema = z.object({
+            status:        z.enum(['not_started', 'in_progress', 'email_sent',
+                                   'called', 'parked', 'validation_complete']),
+            parked_reason: z.string().nullable().optional(),
+            assigned_to:   z.string().nullable().optional(),
+            notes:         z.string().nullable().optional(),
+            updated_by:    z.string().nullable().optional(),
+          }).refine(
+            (d) => d.status !== 'parked' || (!!d.parked_reason && d.parked_reason.trim().length > 0),
+            { message: 'parked_reason is required when status is parked', path: ['parked_reason'] },
+          );
+          const parsed = schema.safeParse(req.body);
+          if (!parsed.success) {
+            res.status(400).json({ error: parsed.error.flatten() });
+            return;
+          }
+          const { status, parked_reason, assigned_to, notes, updated_by } = parsed.data;
+          const { rows } = await appkit.lakebase.query(`
+            INSERT INTO facilityiq.facility_review
+              (facility_id, status, parked_reason, assigned_to, notes, updated_by, updated_at)
+            VALUES ($1, $2, $3, $4, $5, $6, NOW())
+            ON CONFLICT (facility_id) DO UPDATE SET
+              status        = EXCLUDED.status,
+              parked_reason = EXCLUDED.parked_reason,
+              assigned_to   = EXCLUDED.assigned_to,
+              notes         = EXCLUDED.notes,
+              updated_by    = EXCLUDED.updated_by,
+              updated_at    = NOW()
+            RETURNING *
+          `, [facilityId, status, parked_reason ?? null, assigned_to ?? null, notes ?? null, updated_by ?? null]);
+          res.status(200).json(rows[0]);
+        } catch (err) {
+          console.error('Failed to update review:', err);
+          res.status(500).json({ error: 'Failed to update review' });
         }
       });
 
