@@ -6,7 +6,7 @@
 -- Placeholders {SOURCE_TABLE} and {QUALITY_TABLE} are filled in by
 -- prompts/email_outreach.py before execution.
 
-WITH exploded_emails AS (
+WITH base_emails AS (
   SELECT
     unique_id AS facility_id,
     name AS facility_name,
@@ -14,16 +14,13 @@ WITH exploded_emails AS (
     address_stateOrRegion,
     lower(trim(email)) AS email
   FROM {SOURCE_TABLE}
-  LATERAL VIEW explode(from_json(email_addresses, 'ARRAY<STRING>')) exploded AS email
-  WHERE email_addresses IS NOT NULL
-    AND email_addresses NOT IN ('null', '[]')
+  WHERE email IS NOT NULL
+    AND trim(email) NOT IN ('', 'null')
 ),
 valid_emails AS (
   SELECT *
-  FROM exploded_emails
-  WHERE email IS NOT NULL
-    AND email != ''
-    AND email RLIKE '^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$'
+  FROM base_emails
+  WHERE email RLIKE '^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$'
 )
 SELECT
   v.email,

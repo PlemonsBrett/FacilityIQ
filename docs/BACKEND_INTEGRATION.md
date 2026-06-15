@@ -2,21 +2,29 @@
 
 **Purpose:** the data contract the Streamlit/AppKit frontend wires against. Lists every table the app reads and writes, their schemas, how they join, and the order the pipeline must run.
 
-All tables live in **`workspace.facilityiq`** (adjust if your catalog/schema differ). The frontend reaches them via `spark.sql(...)` in the `app/services/` layer.
+Delta tables live in Unity Catalog at **`workspace.facilityiq`**. The app does **not** read these directly — the gold table is published to **Lakebase Postgres** at `` `facilityiq-lakebase`.public.facilities `` via a synced table, and the app reads from there for low-latency serving. App-owned write tables (overrides, user actions) are Postgres tables the app creates directly.
+
+> The catalog name contains a hyphen, so in SQL wrap it in backticks: `` `facilityiq-lakebase`.public.<table> ``.
 
 ---
 
 ## 1. Data Flow
 
 ```
-External raw  ──►  facilities_bronze  ──►  facilities_silver  ──►  facilities_gold ◄── facilities_overrides
-(51-col source)     (39-col landing)       (typed + cleaned)        (analyst-ready)     (user data edits)
+UNITY CATALOG (Delta, workspace.facilityiq)                       LAKEBASE (Postgres, `facilityiq-lakebase`.public)
+─────────────────────────────────────────────                    ──────────────────────────────────────────────
+External raw ─► facilities_bronze ─► facilities_silver ─► facilities_gold ──(synced table)──► public.facilities  ◄─ app reads
+(51-col)        (39-col landing)     (typed + cleaned)     ▲ (analyst-ready)
+                                                           └── facilities_overrides (latest-wins, applied on gold rebuild)
 
-facilities_silver ──► (LLM trust extraction) ──► facilities_trust_signals
-facilities_*      ──► (SQL quality checks)   ──► facilities_quality_scores ──► facilities_email_outreach
+facilities_silver ─► (LLM trust extraction) ─► facilities_trust_signals     ─┐
+facilities_*      ─► (SQL quality checks)    ─► facilities_quality_scores    ─┼─ (optionally synced to Lakebase too)
+                                             ─► facilities_email_outreach    ─┘
 
-Frontend writes:  facilities_overrides (data edits) · facilities_user_actions (notes/shortlist/flag/score override)
+App WRITES (Postgres, app-owned — NOT synced):  facilities_overrides (data edits) · user_actions (notes/shortlist/flag/score override)
 ```
+
+**Sync boundary:** the medallion is Delta in UC; the app reads Lakebase. `facilities_gold` is synced (SNAPSHOT mode) to `` `facilityiq-lakebase`.public.facilities `` via [scripts/sync_facilities_gold_to_lakebase.sh](../scripts/sync_facilities_gold_to_lakebase.sh). Re-run that after each gold rebuild. Synced tables are **read-only in Postgres**, so analyst writes go to app-owned Postgres tables, not synced ones.
 
 **Join key:** the facility identifier is `unique_id` in the medallion tables and `facility_id` in the signal/score/action tables. **They are the same value** — join `facilities_gold.unique_id = facilities_trust_signals.facility_id`.
 
@@ -136,6 +144,7 @@ Send + recipient-confirmation status is **not yet persisted** — when built, ad
 3. `sql/gold/facilities_overrides.sql` *(create once; never drop)*
 4. `sql/gold/facilities_gold.sql` *(re-run to apply new overrides)*
 5. `notebooks/01_trust_extraction.py` → builds `facilities_quality_scores`, `facilities_email_outreach`, then `facilities_trust_signals`
+6. `scripts/sync_facilities_gold_to_lakebase.sh` → publishes gold to `` `facilityiq-lakebase`.public.facilities `` *(re-run after each gold rebuild; SNAPSHOT mode)*
 
 ---
 
@@ -145,3 +154,5 @@ Send + recipient-confirmation status is **not yet persisted** — when built, ad
 - **Source of truth for quality/trust:** the `sql/data_quality/` checks and trust extraction still read the **external 51-column** table, which has columns the 39-column medallion lacks (`phone_numbers`, `capability`, `procedure`, `equipment`). Decide whether to repoint these at `facilities_silver`/`facilities_gold`.
 - **`facilities_user_actions`** table not yet scripted (see §3.2).
 - **Outreach status** persistence not yet built (see §4).
+- **Quality/trust serving:** only `facilities_gold` is synced to Lakebase so far. If the app needs `facilities_quality_scores` / `facilities_trust_signals` / `facilities_email_outreach` at the Lakebase path too, add matching sync scripts (same pattern, PK = `facility_id` / `email`).
+- **SNAPSHOT refresh:** the gold sync is one-shot per run — re-run the sync script after rebuilding gold, or move to TRIGGERED mode (requires enabling Change Data Feed on a non-`CREATE OR REPLACE` gold build).
