@@ -76,6 +76,7 @@ uv run streamlit run app/main.py
 
 - [Product Requirements Document](docs/PRD.md)
 - [Technical Design Document](docs/TDD.md)
+- [Data Validation Checks](docs/Data_Validation_Checks.md)
 
 ---
 
