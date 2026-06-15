@@ -14,6 +14,7 @@ targets:
     mode: production
     workspace:
       host: https://dbc-9924376b-eaa9.cloud.databricks.com
+      root_path: /Workspace/prod/${bundle.name}
 # TODO
 #    variables:
 #      catalog_name: workspace

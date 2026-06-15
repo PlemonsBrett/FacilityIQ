@@ -12,7 +12,7 @@ variables:
 resources:
   apps:
     app:
-      name: "facilityiq"
+      name: "facilityiq-$(bundle.target}"
       description: "A Databricks App powered by AppKit"
       source_code_path: ./
       # Uncomment to enable on behalf of user API scopes. Available scopes: sql, dashboards.genie, files.files, serving.serving-endpoints
@@ -29,19 +29,15 @@ resources:
 
 targets:
   default:
-    # TODO: support for dev env for this + lakebase
     default: true
     workspace:
       host: https://dbc-9924376b-eaa9.cloud.databricks.com
-
-    variables:
-      postgres_branch: projects/facilityiq/branches/production
-      postgres_database: projects/facilityiq/branches/production/databases/databricks-postgres
-      postgres_project: projects/facilityiq
   prod:
     mode: production
     workspace:
       host: https://dbc-9924376b-eaa9.cloud.databricks.com
+      root_path: /Workspace/prod/${bundle.name}
+#     root_path: /Workspace/Shared/projects/${bundle.name}/${bundle.target}
 
     variables:
       postgres_branch: projects/facilityiq/branches/production
