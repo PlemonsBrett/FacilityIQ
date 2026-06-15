@@ -9,3 +9,7 @@ targets:
     default: true
   prod:
     mode: production
+    workspace:
+      host: https://dbc-9924376b-eaa9.cloud.databricks.com
+    variables:
+      catalog_name: workspace
