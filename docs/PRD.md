@@ -127,6 +127,21 @@ Maya sees a red contradiction badge on a facility
   → Maya flags for manual review
 ```
 
+### Flow 5: Kanban Review Board
+
+```
+Maya opens the Review Board
+  → Sees 6 columns representing review stages:
+      Not Started | In Progress | Email Sent | Called | Parked | Validation Complete
+  → "Not Started" is pre-populated with all facilities not yet reviewed
+  → Maya drags a facility card from "Not Started" → "In Progress"
+  → Maya sends an outreach email from the app → card moves to "Email Sent"
+  → After a call, Maya moves the card to "Called" with a note
+  → If blocked, Maya parks the card with a mandatory next-steps reason
+  → When fully verified, Maya moves to "Validation Complete"
+  → Board state persists — Maya's progress is visible to her team on next session
+```
+
 ---
 
 ## 6. Functional Requirements
@@ -168,6 +183,52 @@ Maya sees a red contradiction badge on a facility
 | F-16 | Analyst can flag a facility for review | P0 |
 | F-17 | All actions persist to Delta Lake — survive page refresh and new session | P0 |
 | F-18 | Workbench state (shortlists, notes, flags) visible in search results list view | P1 |
+
+### 6.5 Kanban Review Board
+
+| ID | Requirement | Priority |
+|---|---|---|
+| F-19 | Board displays 6 columns: Not Started, In Progress, Email Sent, Called, Parked, Validation Complete | P0 |
+| F-20 | "Not Started" column auto-populates with all facilities not yet reviewed | P0 |
+| F-21 | Analyst can move a facility card between any two stages | P0 |
+| F-22 | Moving a card to "Parked" requires a mandatory reason / next-steps field | P0 |
+| F-23 | Cards display facility name, type, state, and last-updated timestamp | P0 |
+| F-24 | Board state persists across sessions — progress survives refresh and re-login | P0 |
+| F-25 | Analyst can assign a card to a named analyst and add freeform notes per card | P1 |
+| F-26 | Board is filterable by assigned analyst | P1 |
+
+#### API Reference (backend, `app/server/server.ts`)
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| `GET` | `/api/review/board/unstarted` | "Not Started" column — facilities with no review row |
+| `GET` | `/api/review/board?status=<stage>` | Cards for a specific stage |
+| `GET` | `/api/review/:facilityId` | Single card state (defaults to `not_started` if new) |
+| `POST` | `/api/review/:facilityId` | Move card / set stage (upsert) |
+
+**POST body:**
+```json
+{
+  "status":        "parked",
+  "parked_reason": "Waiting on district office — call back Thursday",
+  "assigned_to":   "maya@org.org",
+  "notes":         "Called twice, no answer",
+  "updated_by":    "maya@org.org"
+}
+```
+
+`parked_reason` is required when `status = "parked"`. Enforced by both the API (zod) and the database (CHECK constraint).
+
+**Suggested board load (parallel fetch all columns):**
+```ts
+const STAGES = ['in_progress', 'email_sent', 'called', 'parked', 'validation_complete'];
+const [unstarted, ...rest] = await Promise.all([
+  fetch('/api/review/board/unstarted').then(r => r.json()),
+  ...STAGES.map(s => fetch(`/api/review/board?status=${s}`).then(r => r.json())),
+]);
+```
+
+**Data model:** `facilityiq.facility_review` — one row per facility, created by the app SP on boot. Columns: `facility_id` (PK), `status`, `parked_reason`, `assigned_to`, `notes`, `updated_by`, `updated_at`. Facilities with no row are implicitly `not_started`.
 
 ---
 
