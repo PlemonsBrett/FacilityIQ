@@ -13,7 +13,7 @@ CATALOG = "YOUR_CATALOG"   # same as 00_setup.py
 SCHEMA = "facilityiq"
 MODEL = "databricks-meta-llama-3-1-70b-instruct"
 FALLBACK_MODEL = "databricks-dbrx-instruct"
-BATCH_SIZE = 50  # facilities per batch before a brief pause
+BATCH_SIZE = 50  # accumulated signals before flushing to Delta (~12-13 facilities at 4 signals each)
 
 # OpenAI-compatible client pointing at Databricks Foundation Model APIs
 from openai import OpenAI
@@ -47,6 +47,7 @@ def extract_signals(facility_row: dict) -> list[dict]:
     """
     prompt = build_prompt(facility_row)
     for attempt, model in enumerate([MODEL, FALLBACK_MODEL]):
+        raw = None
         try:
             raw = call_llm(prompt, model=model)
             parsed = json.loads(raw)
@@ -76,17 +77,13 @@ def extract_signals(facility_row: dict) -> list[dict]:
             err_df = spark.createDataFrame([Row(
                 facility_id=str(facility_row.get("facility_id", "")),
                 error_message=str(e),
-                raw_response="",
+                raw_response=raw or "",
                 failed_at=datetime.now(timezone.utc),
             )])
             err_df.write.format("delta").mode("append").saveAsTable(f"{CATALOG}.{SCHEMA}.extraction_errors")
             return []
 
 # Load facilities that don't yet have signals
-existing = spark.sql(f"""
-  SELECT DISTINCT facility_id FROM {CATALOG}.{SCHEMA}.facilities_trust_signals
-""").toPandas()["facility_id"].tolist()
-
 facilities_df = spark.sql(f"""
   SELECT facility_id, facility_name, facility_type, state,
          description, capability, procedure, equipment,
