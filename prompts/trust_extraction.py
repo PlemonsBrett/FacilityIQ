@@ -1,9 +1,70 @@
-# Penalty points are pre-computed from two SQL checks before this prompt runs:
-#   sql/data_quality/01_duplicate_phones.sql             → phone_penalty_points  (max 50)
-#   sql/data_quality/06_address_and_location_quality.sql → location_penalty_points (max 140)
-# Combined max = 190. Completeness trust_score = 1.0 - (total / 190).
+# Combined max penalty = 190. Completeness trust_score = 1.0 - (total / 190).
+#   PHONE_PENALTY_SQL    → max 50  pts (percentile-ranked)
+#   LOCATION_PENALTY_SQL → max 140 pts (fixed weights)
 
 _MAX_PENALTY = 190.0
+
+SOURCE_TABLE = "databricks_virtue_foundation_dataset_dais_2026.virtue_foundation_dataset.facilities"
+
+PHONE_PENALTY_SQL = f"""
+WITH exploded_phones AS (
+  SELECT
+    unique_id,
+    regexp_replace(phone, '[^0-9]', '') AS phone_normalized
+  FROM {SOURCE_TABLE}
+  LATERAL VIEW explode(from_json(phone_numbers, 'ARRAY<STRING>')) exploded AS phone
+  WHERE phone_numbers IS NOT NULL
+    AND phone_numbers NOT IN ('null', '[]')
+),
+dupes AS (
+  SELECT
+    phone_normalized,
+    COUNT(DISTINCT unique_id) AS duplicate_count
+  FROM exploded_phones
+  WHERE phone_normalized IS NOT NULL
+    AND length(phone_normalized) >= 7
+  GROUP BY phone_normalized
+  HAVING COUNT(DISTINCT unique_id) > 1
+),
+ranked AS (
+  SELECT
+    phone_normalized,
+    duplicate_count,
+    PERCENT_RANK() OVER (ORDER BY duplicate_count) AS pct_rank
+  FROM dupes
+)
+SELECT
+  e.unique_id AS facility_id,
+  MAX(CASE
+    WHEN r.pct_rank >= 0.90 THEN 50
+    WHEN r.pct_rank >= 0.60 THEN 30
+    ELSE 10
+  END) AS phone_penalty_points
+FROM exploded_phones e
+INNER JOIN ranked r ON e.phone_normalized = r.phone_normalized
+GROUP BY e.unique_id
+"""
+
+LOCATION_PENALTY_SQL = f"""
+SELECT
+  unique_id AS facility_id,
+  (
+    CASE WHEN address_city IS NULL OR trim(address_city) = '' OR lower(trim(address_city)) IN ('na', 'n/a', 'unknown') THEN 10 ELSE 0 END
+    + CASE WHEN address_stateOrRegion IS NULL OR trim(address_stateOrRegion) = '' OR lower(trim(address_stateOrRegion)) IN ('na', 'n/a', 'unknown') THEN 25 ELSE 0 END
+    + CASE WHEN lower(trim(address_country)) NOT IN ('india', 'in') THEN 30 ELSE 0 END
+    + CASE WHEN latitude IS NULL OR longitude IS NULL THEN 5 ELSE 0 END
+    + CASE WHEN latitude IS NOT NULL AND (latitude < 6 OR latitude > 38) THEN 35 ELSE 0 END
+    + CASE WHEN longitude IS NOT NULL AND (longitude < 68 OR longitude > 98) THEN 35 ELSE 0 END
+  ) AS location_penalty_points
+FROM {SOURCE_TABLE}
+WHERE
+  address_city IS NULL OR trim(address_city) = '' OR lower(trim(address_city)) IN ('na', 'n/a', 'unknown')
+  OR address_stateOrRegion IS NULL OR trim(address_stateOrRegion) = '' OR lower(trim(address_stateOrRegion)) IN ('na', 'n/a', 'unknown')
+  OR lower(trim(address_country)) NOT IN ('india', 'in')
+  OR latitude IS NULL OR longitude IS NULL
+  OR latitude < 6 OR latitude > 38
+  OR longitude < 68 OR longitude > 98
+"""
 
 SYSTEM_PROMPT = """You are a healthcare facility data analyst. Evaluate a facility record and assess trustworthiness of its claims.
 
@@ -51,9 +112,9 @@ capability: {str(facility.get("capability", ""))[:800]}
 procedure: {str(facility.get("procedure", ""))[:800]}
 equipment: {str(facility.get("equipment", ""))[:800]}
 
-DATA QUALITY PENALTIES (pre-computed from sql/data_quality/):
-phone_penalty_points: {phone_penalty}  (source: 01_duplicate_phones.sql, percentile-ranked)
-location_penalty_points: {location_penalty}  (source: 06_address_and_location_quality.sql)
+DATA QUALITY PENALTIES:
+phone_penalty_points: {phone_penalty}
+location_penalty_points: {location_penalty}
 completeness_trust_score: {c_score}
 completeness_confidence_tier: {c_tier}
 
