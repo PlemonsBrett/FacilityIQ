@@ -134,14 +134,15 @@ The bubble system is managed by a ref map and imperative DOM manipulation (not R
 ### `ScoreBand` (trust dimension card)
 
 ```
-┌──────────────────────────┐
-│ CAPABILITY    [HIGH] badge│
-│ 88            / 100       │
-│ ████████████░░░░ bar     │
-└──────────────────────────┘
+┌──────────────────────────────┐
+│ CAPABILITY    [HIGH] badge  ✏│
+│ 88            / 100          │
+│ ████████████░░░░ bar        │
+└──────────────────────────────┘
 ```
 
-Insufficient data variant shows `⊘ Score suppressed` instead of number + bar.
+- Edit icon (✏) appears top-right of each card. Clicking it opens the Score Override modal pre-filled with that dimension.
+- Insufficient data variant shows `⊘ Score suppressed` instead of number + bar, and has **no edit icon** (cannot override a suppressed score).
 
 ### `FieldRow`
 
@@ -168,13 +169,36 @@ The dark mode selector in the existing app is `[data-theme="dark"]` on `<html>`.
 
 ---
 
+## Modals
+
+Two modals live in `GuidedAnalysis.tsx` (rendered via a React portal to `document.body`):
+
+### Flag for Review modal
+Triggered by the **⚑ Flag for Review** button in the facility header (top-right, next to the overall score). The button is always visible.
+
+- Text area: "Reason for flagging" (required — submit disabled until non-empty)
+- Cancel / Submit buttons
+- On submit: calls `postAction(facilityId, analystId, "flag", reason)`, closes modal
+- Styling: red accent border/button consistent with the flag theme
+
+### Score override modal
+Triggered by a **pencil icon** (✏) that appears on each `ScoreBand` card (except Insufficient Data cards — those show no edit icon). One modal handles all dimensions; the dimension name is pre-filled from which card was clicked.
+
+- Dimension label (read-only, from clicked card)
+- Number input: "New score (0–100)" (required, validated 0–100)
+- Text area: "Reason for override" (required — submit disabled until both filled)
+- Cancel / Submit buttons
+- On submit: calls `postAction(facilityId, analystId, "override", reason, dimension, score)`, closes modal
+
+---
+
 ## Analyst Workbench changes
 
-`Workbench.tsx` is kept but modified:
+`Workbench.tsx` is kept but simplified:
 - **Remove** shortlist section entirely
-- **Add** required comment/reason field to Note save and Override apply (disable button until comment filled)
-- **Flag for Review** section: full-width, requires a reason field, prominent red styling
-- Flag for Review section also appears in the `GuidedAnalysis` header (as a button top-right, separate from workbench — clicking it scrolls to / opens the Flag section in the workbench)
+- **Remove** Override section (moved to ScoreBand card modals above)
+- **Remove** Flag for Review section (moved to header modal above)
+- **Keep** Notes section only — no required comment, just a text area and Save Note button
 
 ---
 
