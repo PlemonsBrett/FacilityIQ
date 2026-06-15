@@ -7,14 +7,8 @@ targets:
   dev:
     mode: development
     default: true
-# TODO
-#    variables:
-#      catalog_name: dev
   prod:
     mode: production
     workspace:
       host: https://dbc-9924376b-eaa9.cloud.databricks.com
       root_path: /Workspace/prod/${bundle.name}
-# TODO
-#    variables:
-#      catalog_name: workspace
