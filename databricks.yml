@@ -1,0 +1,11 @@
+bundle:
+  name: facilityiq
+
+
+
+targets:
+  dev:
+    mode: development
+    default: true
+  prod:
+    mode: production
