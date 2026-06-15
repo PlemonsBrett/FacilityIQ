@@ -50,7 +50,7 @@ spark.sql(f"""
     confidence_tier STRING NOT NULL,
     evidence_text  STRING,
     source_field   STRING,
-    contradiction  BOOLEAN NOT NULL DEFAULT FALSE,
+    contradiction  BOOLEAN NOT NULL,
     contradiction_detail STRING,
     extraction_model STRING NOT NULL,
     extracted_at   TIMESTAMP NOT NULL
