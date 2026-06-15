@@ -95,7 +95,7 @@ export default function DashboardPage({ analystId, onNavigateToFacility }: Props
       .filter((f) => f.score !== null)
       .sort((a, b) => b.score! - a.score!);
     const top3 = scored.slice(0, 3);
-    const bottom3 = [...scored].reverse().slice(0, 3);
+    const bottom3 = scored.slice(-3).reverse();
 
     const actedIds = allActedFacilityIds(analystId);
     const shortlistedCount = actedIds.filter((id) =>

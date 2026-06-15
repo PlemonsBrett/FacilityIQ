@@ -47,7 +47,7 @@ export async function fetchFacilities(params: FacilitiesParams): Promise<Facilit
   const result = await tryFetch<FacilityListItem[]>(`/api/facilities?${qs}`);
 
   if (result === null) {
-    _facilityDataAvailable = false;
+    // Transient failure (network/server error) — don't permanently lock, try again next call
     return filterDummyList(q, state, facilityType, contradictionsOnly, page, limit);
   }
   if (result.length > 0) {

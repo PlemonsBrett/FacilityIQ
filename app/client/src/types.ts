@@ -85,7 +85,7 @@ export function trustLabel(score: number | null): string {
 export function overallScore(signals: TrustSignal[]): number | null {
   const valid = signals
     .filter((s) => s.confidence_tier !== "insufficient_data" && s.trust_score !== null)
-    .map((s) => parseScore(s.trust_score) as number);
+    .map((s) => scoreToInt(s.trust_score) as number);
   if (valid.length === 0) return null;
-  return Math.round((valid.reduce((a, b) => a + b, 0) / valid.length) * 100);
+  return Math.round(valid.reduce((a, b) => a + b, 0) / valid.length);
 }

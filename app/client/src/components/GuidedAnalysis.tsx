@@ -126,7 +126,7 @@ const GAP = 12;
 function measureBubble(el: HTMLDivElement): number {
   el.style.cssText = `display:block!important;visibility:hidden!important;position:absolute!important;top:-9999px!important;left:0!important;width:${BW}px!important`;
   const h = el.offsetHeight;
-  el.style.cssText = "";
+  el.style.cssText = "display:none;";
   return h;
 }
 
@@ -700,8 +700,8 @@ export default function GuidedAnalysis({ detail, analystId }: Props) {
             </div>
             <button
               onClick={() => setFlagOpen(true)}
-              className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full border transition-colors hover:bg-rose-100"
-              style={{ color: "#e11d48", borderColor: "#fecaca", background: "#fff1f2" }}
+              className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full border transition-colors"
+              style={{ color: "var(--fiq-trust-low)", borderColor: "var(--fiq-trust-low)", background: "rgba(220,38,38,0.08)" }}
             >
               ⚑ Flag for Review
             </button>
