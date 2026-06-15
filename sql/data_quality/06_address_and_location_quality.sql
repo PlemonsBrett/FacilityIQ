@@ -27,14 +27,15 @@ SELECT
     + CASE WHEN latitude IS NOT NULL AND (latitude < 6 OR latitude > 38) THEN 35 ELSE 0 END
     + CASE WHEN longitude IS NOT NULL AND (longitude < 68 OR longitude > 98) THEN 35 ELSE 0 END
   ) AS penalty_points,
-  ROUND(GREATEST(0.0, 1.0 - (
-    CASE WHEN address_city IS NULL OR trim(address_city) = '' OR lower(trim(address_city)) IN ('na', 'n/a', 'unknown') THEN 10 ELSE 0 END
-    + CASE WHEN address_stateOrRegion IS NULL OR trim(address_stateOrRegion) = '' OR lower(trim(address_stateOrRegion)) IN ('na', 'n/a', 'unknown') THEN 25 ELSE 0 END
-    + CASE WHEN lower(trim(address_country)) NOT IN ('india', 'in') THEN 30 ELSE 0 END
-    + CASE WHEN latitude IS NULL OR longitude IS NULL THEN 5 ELSE 0 END
-    + CASE WHEN latitude IS NOT NULL AND (latitude < 6 OR latitude > 38) THEN 35 ELSE 0 END
-    + CASE WHEN longitude IS NOT NULL AND (longitude < 68 OR longitude > 98) THEN 35 ELSE 0 END
-  ) / 140.0), 2) AS trust_score
+  CONCAT_WS(
+    '; ',
+    CASE WHEN address_city IS NULL OR trim(address_city) = '' OR lower(trim(address_city)) IN ('na', 'n/a', 'unknown') THEN 'City missing or invalid' END,
+    CASE WHEN address_stateOrRegion IS NULL OR trim(address_stateOrRegion) = '' OR lower(trim(address_stateOrRegion)) IN ('na', 'n/a', 'unknown') THEN 'State/region missing or invalid' END,
+    CASE WHEN lower(trim(address_country)) NOT IN ('india', 'in') THEN 'Country is not India' END,
+    CASE WHEN latitude IS NULL OR longitude IS NULL THEN 'Coordinates missing' END,
+    CASE WHEN latitude IS NOT NULL AND (latitude < 6 OR latitude > 38) THEN 'Latitude outside India' END,
+    CASE WHEN longitude IS NOT NULL AND (longitude < 68 OR longitude > 98) THEN 'Longitude outside India' END
+  ) AS issue_summary
 FROM databricks_virtue_foundation_dataset_dais_2026.virtue_foundation_dataset.facilities
 WHERE address_city IS NULL OR trim(address_city) = '' OR lower(trim(address_city)) IN ('na', 'n/a', 'unknown')
   OR address_stateOrRegion IS NULL OR trim(address_stateOrRegion) = '' OR lower(trim(address_stateOrRegion)) IN ('na', 'n/a', 'unknown')

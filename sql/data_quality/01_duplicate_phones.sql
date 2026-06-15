@@ -58,7 +58,8 @@ SELECT
     WHEN r.pct_rank >= 0.90 THEN 50
     WHEN r.pct_rank >= 0.60 THEN 30
     ELSE 10
-  END AS penalty_points
+  END AS penalty_points,
+  CONCAT('Phone number shared with ', r.duplicate_count, ' facilities') AS issue_summary
 FROM exploded_phones e
 INNER JOIN ranked r
   ON e.phone_normalized = r.phone_normalized
