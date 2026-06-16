@@ -46,7 +46,7 @@ spark.sql(f"""
   CREATE TABLE IF NOT EXISTS {CATALOG}.{SCHEMA}.facilities_trust_signals (
     facility_id    STRING NOT NULL,
     dimension      STRING NOT NULL,
-    trust_score    FLOAT,
+    trust_score    DOUBLE,
     confidence_tier STRING NOT NULL,
     evidence_text  STRING,
     source_field   STRING,

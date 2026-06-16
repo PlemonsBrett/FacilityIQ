@@ -22,8 +22,9 @@ FacilityIQ is a Databricks App that processes a 10,000-record healthcare facilit
 │  └──────────────┘    └──────────────────┘    └──────┬───────┘  │
 │                                                      │          │
 │                                              ┌───────▼───────┐  │
-│                                              │ Streamlit App │  │
-│                                              │  (Databricks  │  │
+│                                              │ TypeScript/   │  │
+│                                              │ AppKit App    │  │
+│                                              │ (Databricks   │  │
 │                                              │    Apps)      │  │
 │                                              └───────────────┘  │
 └─────────────────────────────────────────────────────────────────┘
@@ -39,8 +40,8 @@ FacilityIQ is a Databricks App that processes a 10,000-record healthcare facilit
 | Storage | Delta Lake (Unity Catalog) | ACID persistence, time travel, analyst action log |
 | LLM | Databricks Foundation Model APIs (Meta Llama 3.1 70B or DBRX Instruct) | Native to Databricks, no external API key needed |
 | Orchestration | Databricks Workflow (single-run batch job) | Runs extraction pipeline once, writes to Delta |
-| App Framework | Streamlit on Databricks Apps | Cleanest non-technical UX, native Databricks support |
-| Query Layer | Databricks SQL / PySpark | Facility search, filter, and retrieval |
+| App Framework | TypeScript/AppKit on Databricks Apps | Full React control for analyst workbench UI; AppKit handles Lakebase auth |
+| Query Layer | Lakebase Postgres (via AppKit) | Always-on, sub-100ms latency; no Spark cold starts for interactive use |
 | Version Control | GitHub (public repo) | Hackathon submission requirement |
 
 ---
@@ -87,23 +88,45 @@ PARTITIONED BY (dimension);
 
 ---
 
-### 3.3 Persistence Table: `facilities_user_actions`
+### 3.3 App-Owned Tables (Lakebase Postgres `facilityiq` schema)
 
-Stores all analyst workbench actions. Written by the Streamlit app on user interaction.
+Created and owned by the TypeScript/AppKit server on startup. Written by the app on user interaction.
 
 ```sql
-CREATE TABLE facilities_user_actions (
-  action_id         STRING NOT NULL,   -- UUID
-  facility_id       STRING NOT NULL,
-  analyst_id        STRING NOT NULL,   -- session-scoped for hackathon; expandable to auth later
-  action_type       STRING NOT NULL,   -- 'note' | 'override' | 'shortlist' | 'flag'
-  dimension         STRING,            -- NULL for notes/flags; dimension name for overrides
-  content           STRING,            -- Note text, override reason, or shortlist name
-  override_score    FLOAT,             -- Only for action_type = 'override'
-  created_at        TIMESTAMP NOT NULL,
-  updated_at        TIMESTAMP NOT NULL
-)
-USING DELTA;
+-- Analyst actions (notes, overrides, shortlists, flags)
+CREATE TABLE facilityiq.user_actions (
+  action_id      TEXT PRIMARY KEY,
+  facility_id    TEXT NOT NULL,
+  analyst_id     TEXT NOT NULL,
+  action_type    TEXT NOT NULL CHECK (action_type IN ('note','override','shortlist','flag')),
+  dimension      TEXT,
+  content        TEXT,
+  override_score REAL,
+  created_at     TIMESTAMPTZ DEFAULT NOW(),
+  updated_at     TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Kanban review status per facility
+CREATE TABLE facilityiq.facility_review (
+  facility_id   TEXT PRIMARY KEY,
+  status        TEXT NOT NULL DEFAULT 'not_started'
+                CHECK (status IN ('not_started','in_progress','email_sent','called','parked','validation_complete')),
+  parked_reason TEXT,
+  assigned_to   TEXT,
+  notes         TEXT,
+  updated_by    TEXT,
+  updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Field-level overrides (merged into facilities_gold via Lakehouse Federation)
+CREATE TABLE facilityiq.facilities_overrides (
+  facility_id TEXT NOT NULL,
+  field_name  TEXT NOT NULL,
+  new_value   TEXT,
+  analyst_id  TEXT,
+  reason      TEXT,
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 ```
 
 ---
@@ -230,23 +253,25 @@ def apply_coverage_guard(signal: dict, field: str) -> dict:
 
 ## 5. Application Layer
 
-### 5.1 Streamlit App Structure
+### 5.1 TypeScript/AppKit App Structure
 
 ```
 app/
-├── main.py                  # App entry point, Databricks App config
-├── components/
-│   ├── search_panel.py      # Search bar, filters, results list
-│   ├── trust_scorecard.py   # Per-facility scorecard with evidence panels
-│   ├── analyst_workbench.py # Notes, overrides, shortlist, flags
-│   └── uncertainty_badge.py # Reusable confidence/uncertainty UI component
-├── services/
-│   ├── facility_service.py  # Query layer — search, fetch, filter
-│   ├── trust_service.py     # Fetch trust signals for a facility
-│   └── action_service.py    # Read/write analyst actions to Delta
-└── utils/
-    ├── delta_client.py      # Delta Lake connection helpers
-    └── session.py           # Session state management
+├── server/server.ts         # Node.js/Express backend; all /api/* routes via appkit.lakebase.query()
+├── client/src/
+│   ├── App.tsx              # Root component, routing
+│   ├── pages/
+│   │   ├── DashboardPage    # Facility search + detail workbench
+│   │   └── KanbanPage       # Review status board
+│   ├── components/
+│   │   ├── FacilityCard     # Search result card
+│   │   ├── GuidedAnalysis   # Trust signal scorecard + evidence
+│   │   ├── SearchPanel      # Search bar, filters
+│   │   ├── Workbench        # Analyst actions panel
+│   │   └── Sidebar          # Navigation
+│   └── lib/api.ts           # All fetch calls; falls back to dummy data if DB unreachable
+├── databricks.yml           # App bundle (Lakebase binding, deploy target)
+└── app.yaml                 # Databricks App manifest
 ```
 
 ### 5.2 Key UI Components
