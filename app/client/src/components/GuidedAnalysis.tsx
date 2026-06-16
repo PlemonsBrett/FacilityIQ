@@ -1,10 +1,10 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { Pencil } from "lucide-react";
-import type { FacilityDetail, ReviewStatus } from "../types";
+import type { FacilityDetail, ReviewStatus, TrustSignal } from "../types";
 import { overallScore, scoreToInt, trustColor, trustLabel } from "../types";
 import Workbench from "./Workbench";
-import { postAction, fetchReviewStatus, postReviewStatus, fetchFieldOverrides, postFieldOverride } from "../lib/api";
+import { postAction, fetchReviewStatus, postReviewStatus, fetchFieldOverrides, postFieldOverride, rerunTrustScore } from "../lib/api";
 
 // ── Review status config ──────────────────────────────────────────────────────
 
@@ -746,6 +746,8 @@ interface Props {
 
 export default function GuidedAnalysis({ detail, analystId }: Props) {
   const { facility, trust_signals } = detail;
+  const [activeTrustSignals, setActiveTrustSignals] = useState<TrustSignal[]>(trust_signals);
+  const [rerunOverall, setRerunOverall] = useState<string | number | null>(null);
   const [showAll, setShowAll] = useState(false);
   const [flagOpen, setFlagOpen] = useState(false);
   const [flagHover, setFlagHover] = useState(false);
@@ -758,6 +760,14 @@ export default function GuidedAnalysis({ detail, analystId }: Props) {
   const [statusMenuOpen, setStatusMenuOpen] = useState(false);
   const [parkingFromStatus, setParkingFromStatus] = useState(false);
   const [validatedBanner, setValidatedBanner] = useState(false);
+  const [rerunState, setRerunState] = useState<"idle" | "running" | "success" | "error">("idle");
+  const [lastRerunReason, setLastRerunReason] = useState<"edited" | "verified" | "manual">("manual");
+
+  useEffect(() => {
+    setActiveTrustSignals(trust_signals);
+    setRerunOverall(null);
+    setRerunState("idle");
+  }, [facility.facility_id, trust_signals]);
 
   useEffect(() => {
     fetchReviewStatus(facility.facility_id).then((r) => {
@@ -799,32 +809,54 @@ export default function GuidedAnalysis({ detail, analystId }: Props) {
   const showAllRef = useRef(showAll);
   useEffect(() => { showAllRef.current = showAll; }, [showAll]);
 
+  const effectiveDetail = useMemo(
+    () => ({ ...detail, trust_signals: activeTrustSignals }),
+    [activeTrustSignals, detail],
+  );
+
   const fields = useMemo(() => {
-    const raw = buildFields(detail);
+    const raw = buildFields(effectiveDetail);
     return raw.map((f) => {
       const ov = localOverrides[f.field_name];
       if (ov !== undefined) return { ...f, value: ov, missing: false };
       return f;
     });
-  }, [detail, localOverrides]);
+  }, [effectiveDetail, localOverrides]);
 
   const overriddenFields = useMemo(() => new Set(Object.keys(localOverrides)), [localOverrides]);
 
   const scoreBands = useMemo((): ScoreBandDef[] =>
     ["capability", "equipment", "procedure", "completeness"].map((dim) => {
-      const sig = trust_signals.find((s) => s.dimension === dim);
+      const sig = activeTrustSignals.find((s) => s.dimension === dim);
       return {
         dimension: dim.charAt(0).toUpperCase() + dim.slice(1),
         score: sig ? scoreToInt(sig.trust_score) : null,
         confidence_tier: sig?.confidence_tier ?? "insufficient_data",
       };
     }),
-  [trust_signals]);
+  [activeTrustSignals]);
 
   const overall = useMemo(
-    () => scoreToInt(facility.overall_trust_score ?? null) ?? overallScore(trust_signals),
-    [facility.overall_trust_score, trust_signals],
+    () => scoreToInt(rerunOverall == null ? null : String(rerunOverall))
+      ?? scoreToInt(facility.overall_trust_score ?? null)
+      ?? overallScore(activeTrustSignals),
+    [activeTrustSignals, facility.overall_trust_score, rerunOverall],
   );
+
+  async function handleRerunTrustScore(reason: "edited" | "verified" | "manual") {
+    setRerunState("running");
+    setLastRerunReason(reason);
+    const result = await rerunTrustScore(facility.facility_id, analystId, reason);
+    if (!result) {
+      setRerunState("error");
+      return;
+    }
+    setActiveTrustSignals(result.trust_signals);
+    setRerunOverall(result.overall_trust_score);
+    setRerunState("success");
+  }
+
+  const nextRerunReason = reviewStatus === "validation_complete" ? "verified" : lastRerunReason;
 
   const grouped = useMemo(() => {
     const map = new Map<string, FacilityField[]>([
@@ -1007,15 +1039,45 @@ export default function GuidedAnalysis({ detail, analystId }: Props) {
             style={{ background: "#d1fae5", color: "#065f46", border: "1px solid #a7f3d0" }}
           >
             <span>✓</span>
-            <span>Facility validated. All edits are saved and will be applied to the gold table on next pipeline rebuild.</span>
+            <span>Facility validated. Rerun the trust score to refresh evidence from the edited record.</span>
           </div>
         )}
 
         {/* Trust dimensions */}
         <div data-tour="trust-dimensions">
-          <p className="text-[10px] font-bold uppercase tracking-widest mb-3" style={{ color: "var(--fiq-text-faintest)" }}>
-            Trust Dimensions
-          </p>
+          <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
+            <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "var(--fiq-text-faintest)" }}>
+              Trust Dimensions
+            </p>
+            <div className="flex items-center gap-2">
+              {rerunState === "success" && (
+                <span className="text-[10px] font-semibold" style={{ color: "var(--fiq-trust-high)" }}>
+                  Refreshed from {lastRerunReason}
+                </span>
+              )}
+              {rerunState === "error" && (
+                <span className="text-[10px] font-semibold" style={{ color: "var(--fiq-trust-low)" }}>
+                  Rerun failed
+                </span>
+              )}
+              <button
+                onClick={() => handleRerunTrustScore(nextRerunReason)}
+                disabled={rerunState === "running"}
+                className="text-xs font-semibold px-3 py-1.5 rounded-full border transition-opacity disabled:opacity-50"
+                style={{
+                  color: "var(--fiq-text)",
+                  borderColor: "var(--fiq-border)",
+                  background: "var(--fiq-bg-surface)",
+                }}
+              >
+                {rerunState === "running"
+                  ? "Rerunning..."
+                  : reviewStatus === "validation_complete"
+                    ? "Rerun after Validation"
+                    : "Rerun Trust Score"}
+              </button>
+            </div>
+          </div>
           <div className="flex flex-wrap gap-3">
             {scoreBands.map((ts) => (
               <ScoreBand key={ts.dimension} ts={ts} onEdit={setOverrideDim} />
@@ -1081,6 +1143,8 @@ export default function GuidedAnalysis({ detail, analystId }: Props) {
             await postFieldOverride(facility.facility_id, editingField.fieldName, newValue, analystId, reason);
             setLocalOverrides((prev) => ({ ...prev, [editingField.fieldName]: newValue }));
             setEditingField(null);
+            setRerunState("idle");
+            setLastRerunReason("edited");
           }}
           onClose={() => setEditingField(null)}
         />

@@ -1,4 +1,4 @@
-import type { FacilityListItem, FacilityDetail, UserAction, ReviewCard, ReviewStatus, FieldOverride } from "../types";
+import type { FacilityListItem, FacilityDetail, UserAction, ReviewCard, ReviewStatus, FieldOverride, TrustRerunResult } from "../types";
 import {
   filterDummyList,
   DUMMY_DETAILS,
@@ -167,6 +167,18 @@ export async function postFieldOverride(
     body: JSON.stringify({ field_name: fieldName, new_value: newValue, analyst_id: analystId, reason }),
   });
   return result !== null;
+}
+
+export async function rerunTrustScore(
+  facilityId: string,
+  analystId: string,
+  reason: "edited" | "verified" | "manual",
+): Promise<TrustRerunResult | null> {
+  return tryFetch<TrustRerunResult>(`/api/facilities/${facilityId}/rerun-trust`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ analyst_id: analystId, reason }),
+  });
 }
 
 export async function fetchReviewStatus(

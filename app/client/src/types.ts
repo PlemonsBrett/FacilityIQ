@@ -22,6 +22,13 @@ export interface TrustSignal {
   extracted_at: string;
 }
 
+export interface TrustRerunResult {
+  facility_id: string;
+  extraction_model: string;
+  overall_trust_score: string | number | null;
+  trust_signals: TrustSignal[];
+}
+
 export interface FacilityDetail {
   facility: {
     facility_id: string;

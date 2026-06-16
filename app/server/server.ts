@@ -1,5 +1,9 @@
-import { createApp, lakebase, server } from '@databricks/appkit';
+import { createApp, lakebase, server, serving } from '@databricks/appkit';
 import { z } from 'zod';
+
+const MODEL = 'databricks-meta-llama-3-3-70b-instruct';
+const FALLBACK_MODEL = 'databricks-meta-llama-3-1-8b-instruct';
+const TRUST_DIMENSIONS = ['capability', 'equipment', 'procedure', 'completeness'] as const;
 
 const adjustedTrustScoreSql = `
   CASE
@@ -24,10 +28,154 @@ const adjustedTrustScoreSql = `
   END
 `;
 
+const trustSignalSchema = z.object({
+  dimension: z.enum(TRUST_DIMENSIONS),
+  trust_score: z.number().min(0).max(1).nullable(),
+  confidence_tier: z.enum(['high', 'medium', 'low', 'insufficient_data']),
+  evidence_text: z.string().nullable(),
+  source_field: z.string().nullable(),
+  contradiction: z.boolean(),
+  contradiction_detail: z.string().nullable(),
+});
+
+function buildTrustPrompt(facility: Record<string, unknown>): string {
+  const value = (key: string, fallback = 'N/A') => {
+    const raw = facility[key];
+    return raw === null || raw === undefined || raw === '' ? fallback : String(raw);
+  };
+
+  return `Analyze this healthcare facility and return a trust assessment for four dimensions.
+
+STRUCTURED FIELDS:
+facility_id: ${value('facility_id')}
+facility_type: ${value('facility_type')}
+state: ${value('state')}
+capacity: ${value('capacity', 'NOT PROVIDED')}
+year_established: ${value('year_established', 'NOT PROVIDED')}
+
+FREE TEXT FIELDS:
+description: ${value('description', '').slice(0, 1500)}
+capability: ${value('capability', '').slice(0, 800)}
+procedure: ${value('procedure', '').slice(0, 800)}
+equipment: ${value('equipment', '').slice(0, 800)}
+
+Return this exact JSON (no extra keys, no markdown):
+{
+  "dimensions": [
+    {
+      "dimension": "capability",
+      "trust_score": <0.0-1.0 or null>,
+      "confidence_tier": "<high|medium|low|insufficient_data>",
+      "evidence_text": "<exact quote from source, or null>",
+      "source_field": "<field name or null>",
+      "contradiction": <true|false>,
+      "contradiction_detail": "<explanation or null>"
+    },
+    {
+      "dimension": "equipment",
+      "trust_score": <0.0-1.0 or null>,
+      "confidence_tier": "<high|medium|low|insufficient_data>",
+      "evidence_text": "<exact quote from source, or null>",
+      "source_field": "<field name or null>",
+      "contradiction": <true|false>,
+      "contradiction_detail": "<explanation or null>"
+    },
+    {
+      "dimension": "procedure",
+      "trust_score": <0.0-1.0 or null>,
+      "confidence_tier": "<high|medium|low|insufficient_data>",
+      "evidence_text": "<exact quote from source, or null>",
+      "source_field": "<field name or null>",
+      "contradiction": <true|false>,
+      "contradiction_detail": "<explanation or null>"
+    },
+    {
+      "dimension": "completeness",
+      "trust_score": null,
+      "confidence_tier": "insufficient_data",
+      "evidence_text": "capacity and year_established have <25% and 48% dataset coverage respectively",
+      "source_field": null,
+      "contradiction": false,
+      "contradiction_detail": null
+    }
+  ]
+}`;
+}
+
+function extractJsonObject(text: string): unknown {
+  const cleaned = text.trim().replace(/^```(?:json)?/i, '').replace(/```$/i, '').trim();
+  try {
+    return JSON.parse(cleaned);
+  } catch {
+    const start = cleaned.indexOf('{');
+    const end = cleaned.lastIndexOf('}');
+    if (start >= 0 && end > start) {
+      return JSON.parse(cleaned.slice(start, end + 1));
+    }
+    throw new Error('Model response did not contain valid JSON');
+  }
+}
+
+function normalizeSignals(raw: unknown) {
+  const parsed = z.object({ dimensions: z.array(trustSignalSchema) }).parse(raw);
+  const byDimension = new Map(parsed.dimensions.map((s) => [s.dimension, s]));
+  return TRUST_DIMENSIONS.map((dimension) => {
+    const signal = byDimension.get(dimension);
+    if (signal) return signal;
+    return {
+      dimension,
+      trust_score: null,
+      confidence_tier: 'insufficient_data' as const,
+      evidence_text: null,
+      source_field: null,
+      contradiction: false,
+      contradiction_detail: null,
+    };
+  });
+}
+
+function adjustedScoreFromSignals(
+  facility: Record<string, unknown>,
+  signals: ReturnType<typeof normalizeSignals>,
+): number | null {
+  const scored = signals
+    .map((s) => s.trust_score)
+    .filter((score): score is number => typeof score === 'number');
+  if (scored.length === 0) return null;
+
+  const avg = scored.reduce((sum, score) => sum + score, 0) / scored.length;
+  const blankCoreFields = [
+    'official_phone',
+    'email',
+    'official_website',
+    'year_established',
+    'capacity',
+    'number_doctors',
+    'description',
+  ].filter((field) => facility[field] === null || facility[field] === undefined || facility[field] === '').length;
+  const qualityScore = typeof facility.quality_score === 'number'
+    ? facility.quality_score
+    : Number(facility.quality_score ?? 100);
+  const reviewStatus = String(facility.review_status ?? '');
+  const cap = reviewStatus === 'validation_complete' ? 1 : 0.9;
+  const adjusted = avg
+    - (Math.max(0, 3 - scored.length) * 0.10)
+    - (blankCoreFields * 0.03)
+    - ((100 - (Number.isFinite(qualityScore) ? qualityScore : 100)) / 400);
+
+  return Math.max(0, Math.min(1, cap, adjusted));
+}
+
 createApp({
   plugins: [
     lakebase(),
     server(),
+    serving({
+      endpoints: {
+        llm: { env: 'DATABRICKS_SERVING_ENDPOINT_NAME' },
+        fallback: { env: 'DATABRICKS_FALLBACK_SERVING_ENDPOINT_NAME' },
+      },
+    }),
   ],
   async onPluginsReady(appkit) {
     // Table init in public schema — same schema as synced facility tables.
@@ -42,6 +190,7 @@ createApp({
         DROP TABLE IF EXISTS facilityiq.user_actions CASCADE;
         DROP TABLE IF EXISTS facilityiq.facility_review CASCADE;
         DROP TABLE IF EXISTS facilityiq.facilities_overrides CASCADE;
+        DROP TABLE IF EXISTS facilityiq.trust_signal_reruns CASCADE;
 
         CREATE TABLE facilityiq.facilities_overrides (
           facility_id  TEXT        NOT NULL,
@@ -83,6 +232,24 @@ createApp({
         );
         CREATE INDEX idx_fr_status
           ON facilityiq.facility_review (status, updated_at DESC);
+
+        CREATE TABLE facilityiq.trust_signal_reruns (
+          rerun_id             TEXT PRIMARY KEY,
+          facility_id          TEXT NOT NULL,
+          dimension            TEXT NOT NULL CHECK (dimension IN ('capability','equipment','procedure','completeness')),
+          trust_score          REAL,
+          confidence_tier      TEXT,
+          evidence_text        TEXT,
+          source_field         TEXT,
+          contradiction        BOOLEAN,
+          contradiction_detail TEXT,
+          reason               TEXT NOT NULL CHECK (reason IN ('edited','verified','manual')),
+          analyst_id           TEXT,
+          extraction_model     TEXT,
+          created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+        CREATE INDEX idx_tsr_latest
+          ON facilityiq.trust_signal_reruns (facility_id, dimension, created_at DESC);
       `);
       console.log('[facilityiq] Tables ready in facilityiq schema');
     } catch (err) {
@@ -234,13 +401,53 @@ createApp({
           const { id } = req.params;
           const [fr, sr] = await Promise.all([
             appkit.lakebase.query(
-              `SELECT
+              `WITH latest_reruns AS (
+                 SELECT DISTINCT ON (dimension)
+                        facility_id,
+                        dimension,
+                        trust_score,
+                        confidence_tier,
+                        evidence_text,
+                        source_field,
+                        contradiction,
+                        contradiction_detail,
+                        extraction_model,
+                        created_at AS extracted_at
+                 FROM facilityiq.trust_signal_reruns
+                 WHERE facility_id = $1
+                 ORDER BY dimension, created_at DESC
+               ),
+               t AS (
+                 SELECT * FROM latest_reruns
+                 UNION ALL
+                 SELECT
+                        p.facility_id,
+                        p.dimension,
+                        p.trust_score,
+                        p.confidence_tier,
+                        p.evidence_text,
+                        p.source_field,
+                        p.contradiction,
+                        p.contradiction_detail,
+                        p.extraction_model,
+                        p.extracted_at
+                 FROM public.facilities_trust_signals p
+                 WHERE p.facility_id = $1
+                   AND NOT EXISTS (
+                     SELECT 1 FROM latest_reruns r
+                     WHERE r.dimension = p.dimension
+                   )
+               )
+               SELECT
                       f.unique_id                  AS facility_id,
                       f.name                       AS facility_name,
                       f.facility_type_id           AS facility_type,
                       f.address_state_or_region    AS state,
                       f.address_city               AS district,
                       f.description,
+                      f.capability,
+                      f.procedure,
+                      f.equipment,
                       f.capacity,
                       f.year_established,
                       f.number_doctors,
@@ -251,7 +458,7 @@ createApp({
                       f.overridden_fields,
                       ${adjustedTrustScoreSql}::real AS overall_trust_score
                FROM public.facilities f
-               LEFT JOIN public.facilities_trust_signals t ON f.unique_id = t.facility_id
+               LEFT JOIN t ON f.unique_id = t.facility_id
                LEFT JOIN public.facilities_quality_scores q ON q.facility_id = f.unique_id
                LEFT JOIN facilityiq.facility_review r ON r.facility_id = f.unique_id
                WHERE f.unique_id = $1
@@ -262,6 +469,9 @@ createApp({
                       f.address_state_or_region,
                       f.address_city,
                       f.description,
+                      f.capability,
+                      f.procedure,
+                      f.equipment,
                       f.capacity,
                       f.year_established,
                       f.number_doctors,
@@ -272,8 +482,55 @@ createApp({
                       f.overridden_fields,
                       q.quality_score`, [id]),
             appkit.lakebase.query(
-              `SELECT * FROM public.facilities_trust_signals
-               WHERE facility_id = $1 ORDER BY dimension`, [id]),
+              `WITH latest_reruns AS (
+                 SELECT DISTINCT ON (dimension)
+                        facility_id,
+                        dimension,
+                        trust_score,
+                        confidence_tier,
+                        evidence_text,
+                        source_field,
+                        contradiction,
+                        contradiction_detail,
+                        extraction_model,
+                        created_at AS extracted_at
+                 FROM facilityiq.trust_signal_reruns
+                 WHERE facility_id = $1
+                 ORDER BY dimension, created_at DESC
+               )
+               SELECT
+                      0::int AS id,
+                      facility_id,
+                      dimension,
+                      trust_score,
+                      confidence_tier,
+                      evidence_text,
+                      source_field,
+                      contradiction,
+                      contradiction_detail,
+                      extraction_model,
+                      extracted_at
+               FROM latest_reruns
+               UNION ALL
+               SELECT
+                      0::int AS id,
+                      p.facility_id,
+                      p.dimension,
+                      p.trust_score,
+                      p.confidence_tier,
+                      p.evidence_text,
+                      p.source_field,
+                      p.contradiction,
+                      p.contradiction_detail,
+                      p.extraction_model,
+                      p.extracted_at
+               FROM public.facilities_trust_signals p
+               WHERE p.facility_id = $1
+                 AND NOT EXISTS (
+                   SELECT 1 FROM latest_reruns r
+                   WHERE r.dimension = p.dimension
+                 )
+               ORDER BY dimension`, [id]),
           ]);
           if (fr.rows.length === 0) {
             res.status(404).json({ error: 'Facility not found' });
@@ -329,6 +586,165 @@ createApp({
         } catch (err) {
           console.error('Failed to save override:', err);
           res.status(500).json({ error: 'Failed to save override' });
+        }
+      });
+
+      // POST /api/facilities/:id/rerun-trust — refresh trust dimensions from current edited data
+      app.post('/api/facilities/:id/rerun-trust', async (req, res) => {
+        try {
+          const { id } = req.params;
+          const schema = z.object({
+            analyst_id: z.string().min(1),
+            reason: z.enum(['edited', 'verified', 'manual']).default('manual'),
+          });
+          const parsed = schema.safeParse(req.body ?? {});
+          if (!parsed.success) {
+            res.status(400).json({ error: parsed.error.flatten() });
+            return;
+          }
+          const { analyst_id, reason } = parsed.data;
+
+          const [facilityResult, overridesResult] = await Promise.all([
+            appkit.lakebase.query(`
+              SELECT
+                f.unique_id AS facility_id,
+                f.name AS facility_name,
+                f.facility_type_id AS facility_type,
+                f.address_state_or_region AS state,
+                f.description,
+                f.capability,
+                f.procedure,
+                f.equipment,
+                f.capacity,
+                f.year_established,
+                f.number_doctors,
+                f.official_phone,
+                f.email,
+                f.official_website,
+                COALESCE(q.quality_score, 100) AS quality_score,
+                r.status AS review_status
+              FROM public.facilities f
+              LEFT JOIN public.facilities_quality_scores q ON q.facility_id = f.unique_id
+              LEFT JOIN facilityiq.facility_review r ON r.facility_id = f.unique_id
+              WHERE f.unique_id = $1
+            `, [id]),
+            appkit.lakebase.query(`
+              SELECT DISTINCT ON (field_name) field_name, new_value
+              FROM facilityiq.facilities_overrides
+              WHERE facility_id = $1
+              ORDER BY field_name, updated_at DESC
+            `, [id]),
+          ]);
+
+          if (facilityResult.rows.length === 0) {
+            res.status(404).json({ error: 'Facility not found' });
+            return;
+          }
+
+          const facility = { ...(facilityResult.rows[0] as Record<string, unknown>) };
+          for (const row of overridesResult.rows as Array<{ field_name: string; new_value: string }>) {
+            const target =
+              row.field_name === 'name' ? 'facility_name' :
+              row.field_name === 'facility_type_id' ? 'facility_type' :
+              row.field_name === 'address_state_or_region' ? 'state' :
+              row.field_name;
+            facility[target] = row.new_value;
+          }
+
+          const messages = [
+            {
+              role: 'system',
+              content: `You are a healthcare facility data analyst. Evaluate a facility record and assess trustworthiness of its claims.
+
+RULES:
+- Only cite text that actually appears in the source fields. Never invent or infer.
+- Return "insufficient_data" confidence_tier if evidence is absent or field coverage is too low.
+- capacity and year_established ALWAYS get confidence_tier "insufficient_data" and trust_score null — no exceptions.
+- Flag contradictions where a structured field directly conflicts with free text.
+- Respond ONLY with valid JSON. No markdown fences, no preamble.`,
+            },
+            { role: 'user', content: buildTrustPrompt(facility) },
+          ];
+
+          async function invokeModel(alias: 'llm' | 'fallback', model: string) {
+            const result = await appkit.serving(alias).asUser(req).invoke({
+              messages,
+              temperature: 0.0,
+              max_tokens: 1024,
+            });
+            const maybeExecution = result as { ok?: boolean; status?: number; message?: string; data?: unknown };
+            if (maybeExecution.ok === false) {
+              throw new Error(maybeExecution.message ?? `Model invocation failed with ${maybeExecution.status}`);
+            }
+            const data = maybeExecution.ok === true ? maybeExecution.data : result;
+            const content = (data as { choices?: Array<{ message?: { content?: string } }> })
+              ?.choices?.[0]?.message?.content;
+            if (!content) throw new Error(`${model} returned no message content`);
+            return { model, signals: normalizeSignals(extractJsonObject(content)) };
+          }
+
+          let extracted: { model: string; signals: ReturnType<typeof normalizeSignals> };
+          try {
+            extracted = await invokeModel('llm', MODEL);
+          } catch (primaryErr) {
+            console.warn('[facilityiq] Primary trust rerun failed:', (primaryErr as Error).message);
+            extracted = await invokeModel('fallback', FALLBACK_MODEL);
+          }
+
+          for (const signal of extracted.signals) {
+            await appkit.lakebase.query(`
+              INSERT INTO facilityiq.trust_signal_reruns
+                (rerun_id, facility_id, dimension, trust_score, confidence_tier,
+                 evidence_text, source_field, contradiction, contradiction_detail,
+                 reason, analyst_id, extraction_model)
+              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+            `, [
+              crypto.randomUUID(),
+              id,
+              signal.dimension,
+              signal.trust_score,
+              signal.confidence_tier,
+              signal.evidence_text,
+              signal.source_field,
+              signal.contradiction,
+              signal.contradiction_detail,
+              reason,
+              analyst_id,
+              extracted.model,
+            ]);
+          }
+
+          const { rows } = await appkit.lakebase.query(`
+            SELECT
+              0::int AS id,
+              facility_id,
+              dimension,
+              trust_score,
+              confidence_tier,
+              evidence_text,
+              source_field,
+              contradiction,
+              contradiction_detail,
+              extraction_model,
+              created_at AS extracted_at
+            FROM (
+              SELECT DISTINCT ON (dimension) *
+              FROM facilityiq.trust_signal_reruns
+              WHERE facility_id = $1
+              ORDER BY dimension, created_at DESC
+            ) latest
+            ORDER BY dimension
+          `, [id]);
+
+          res.status(201).json({
+            facility_id: id,
+            extraction_model: extracted.model,
+            overall_trust_score: adjustedScoreFromSignals(facility, extracted.signals),
+            trust_signals: rows,
+          });
+        } catch (err) {
+          console.error('Failed to rerun trust score:', err);
+          res.status(500).json({ error: (err as Error).message || 'Failed to rerun trust score' });
         }
       });
 
