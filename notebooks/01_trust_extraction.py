@@ -1,4 +1,7 @@
 # Databricks notebook source
+# MAGIC %pip install openai
+
+# COMMAND ----------
 import json
 import os
 import sys
