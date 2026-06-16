@@ -1,9 +1,10 @@
 import type { Step } from "react-joyride";
-import type { View } from "../App";
+
+type AppView = "desk" | "dashboard" | "board";
 
 export interface TourStep extends Step {
   meta?: {
-    view?: View;
+    view?: AppView;
     selectFirst?: boolean;
   };
 }
