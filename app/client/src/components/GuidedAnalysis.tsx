@@ -34,6 +34,7 @@ interface FacilityField {
   label: string;
   field_name: string;
   value: string | null;
+  valueItems?: string[];
   category: "Identity" | "Clinical" | "Capacity" | "Operations";
   highlights?: TextHighlight[];
   missing?: boolean;
@@ -52,6 +53,28 @@ interface ScoreBandDef {
 }
 
 // ── Data helpers ──────────────────────────────────────────────────────────────
+
+function normalizeArrayField(raw: string | string[] | null | undefined): { text: string | null; items: string[] | undefined } {
+  if (raw === null || raw === undefined) return { text: null, items: undefined };
+
+  let arr: string[] | null = null;
+  if (Array.isArray(raw)) {
+    arr = raw.map((s) => String(s)).filter(Boolean);
+  } else if (typeof raw === "string" && raw.trimStart().startsWith("[")) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) arr = parsed.map((s) => String(s)).filter(Boolean);
+    } catch { /* fall through to plain string */ }
+  }
+
+  if (arr !== null) {
+    return arr.length === 0
+      ? { text: null, items: undefined }
+      : { text: arr.join(", "), items: arr.length > 1 ? arr : undefined };
+  }
+
+  return { text: (raw as string) || null, items: undefined };
+}
 
 function segmentText(text: string, highlights: TextHighlight[]): Segment[] {
   const positioned = highlights
@@ -112,9 +135,14 @@ function buildFields(detail: FacilityDetail): FacilityField[] {
 
   const sigText = (dim: string) =>
     trust_signals.find((s) => s.dimension === dim)?.evidence_text ?? null;
-  const capabilityText = facility.capability ?? sigText("capability");
-  const equipmentText  = facility.equipment  ?? sigText("equipment");
-  const procedureText  = facility.procedure  ?? sigText("procedure");
+
+  const cap = normalizeArrayField(facility.capability);
+  const eq  = normalizeArrayField(facility.equipment);
+  const pr  = normalizeArrayField(facility.procedure);
+
+  const capabilityText = cap.text ?? sigText("capability");
+  const equipmentText  = eq.text  ?? sigText("equipment");
+  const procedureText  = pr.text  ?? sigText("procedure");
 
   return [
     { label: "Facility Name",    field_name: "name",                    value: facility.facility_name,    category: "Identity" },
@@ -126,9 +154,9 @@ function buildFields(detail: FacilityDetail): FacilityField[] {
     { label: "Website",          field_name: "official_website",        value: facility.official_website, category: "Identity" },
     { label: "Address",          field_name: "address_line1",           value: facility.address_line1,    category: "Identity" },
     { label: "Description",      field_name: "description",             value: facility.description,      category: "Identity", highlights: getDescriptionHighlights() },
-    { label: "Capability",       field_name: "capability",              value: capabilityText,            category: "Clinical", highlights: getHighlights("capability", capabilityText) },
-    { label: "Equipment",        field_name: "equipment",               value: equipmentText,             category: "Clinical", highlights: getHighlights("equipment",  equipmentText) },
-    { label: "Procedure",        field_name: "procedure",               value: procedureText,             category: "Clinical", highlights: getHighlights("procedure",  procedureText) },
+    { label: "Capability",       field_name: "capability",              value: capabilityText, valueItems: cap.items, category: "Clinical", highlights: getHighlights("capability", capabilityText) },
+    { label: "Equipment",        field_name: "equipment",               value: equipmentText,  valueItems: eq.items,  category: "Clinical", highlights: getHighlights("equipment",  equipmentText) },
+    { label: "Procedure",        field_name: "procedure",               value: procedureText,  valueItems: pr.items,  category: "Clinical", highlights: getHighlights("procedure",  procedureText) },
     { label: "Bed Capacity",     field_name: "capacity",                value: capStr,                    category: "Capacity", highlights: getHighlights("capacity", capStr), missing: capStr === null },
     { label: "Doctors",          field_name: "number_doctors",          value: docStr,                    category: "Capacity", missing: docStr === null },
     { label: "Year Established", field_name: "year_established",        value: yearStr,                   category: "Capacity", missing: yearStr === null },
@@ -366,24 +394,35 @@ function FieldRow({
         </div>
       ) : (
         <div className="flex-1">
-          <span className="text-sm leading-relaxed" style={{ color: "var(--fiq-text-muted)" }}>
-            {field.highlights?.length ? (
-              segmentText(field.value!, field.highlights).map((seg, i) =>
-                seg.kind === "plain" ? (
-                  <span key={i}>{seg.text}</span>
-                ) : (
-                  <HighlightSpan
-                    key={i}
-                    hl={seg.hl}
-                    onEnter={(el) => onSpanEnter(el, seg.hl.id)}
-                    onLeave={() => onSpanLeave(seg.hl.id)}
-                  />
-                ),
-              )
-            ) : (
-              field.value
-            )}
-          </span>
+          {field.valueItems ? (
+            <ul className="mb-1.5 flex flex-col gap-0.5">
+              {field.valueItems.map((item, i) => (
+                <li key={i} className="flex items-start gap-1.5 text-sm" style={{ color: "var(--fiq-text-muted)" }}>
+                  <span className="mt-1.5 shrink-0 w-1 h-1 rounded-full" style={{ background: "var(--fiq-text-faintest)" }} />
+                  {item}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <span className="text-sm leading-relaxed" style={{ color: "var(--fiq-text-muted)" }}>
+              {field.highlights?.length ? (
+                segmentText(field.value!, field.highlights).map((seg, i) =>
+                  seg.kind === "plain" ? (
+                    <span key={i}>{seg.text}</span>
+                  ) : (
+                    <HighlightSpan
+                      key={i}
+                      hl={seg.hl}
+                      onEnter={(el) => onSpanEnter(el, seg.hl.id)}
+                      onLeave={() => onSpanLeave(seg.hl.id)}
+                    />
+                  ),
+                )
+              ) : (
+                field.value
+              )}
+            </span>
+          )}
           <div className="flex gap-1.5 mt-1.5">
             <button
               onClick={handleVerify}
