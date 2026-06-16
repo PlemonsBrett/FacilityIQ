@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import Joyride, { ACTIONS, EVENTS, type CallBackProps } from "react-joyride";
+import { Joyride, ACTIONS, LIFECYCLE, STATUS, type EventData } from "react-joyride";
 import type { FacilityDetail } from "./types";
 import SearchPanel from "./components/SearchPanel";
 import GuidedAnalysis from "./components/GuidedAnalysis";
@@ -64,20 +64,20 @@ export default function App({ splashDone }: Props) {
   }, []);
 
   const handleTourCallback = useCallback(
-    ({ action, index, type }: CallBackProps) => {
-      if (type === EVENTS.STEP_BEFORE) {
-        const step = TOUR_STEPS[index];
-        if (step.meta?.view) setView(step.meta.view as View);
-        if (step.meta?.selectFirst) {
+    (data: EventData) => {
+      const { action, index, lifecycle, status } = data;
+      // On Next: prep next step's view before advancing
+      if (lifecycle === LIFECYCLE.COMPLETE && action === ACTIONS.NEXT) {
+        const nextStep = TOUR_STEPS[index + 1];
+        if (nextStep?.meta?.view) setView(nextStep.meta.view as View);
+        if (nextStep?.meta?.selectFirst) {
           tourWaitingForFacility.current = true;
           selectFirstFacility();
-          return; // defer step advance until detail loads
+          return; // defer advance until facility detail loads
         }
-      }
-      if (type === EVENTS.STEP_AFTER && action !== ACTIONS.CLOSE) {
         setTourStepIndex(index + 1);
       }
-      if (action === ACTIONS.CLOSE || type === EVENTS.TOUR_END) {
+      if (status === STATUS.FINISHED || status === STATUS.SKIPPED || action === ACTIONS.CLOSE) {
         setTourRun(false);
         localStorage.setItem(TOUR_KEY, "1");
       }
@@ -108,26 +108,26 @@ export default function App({ splashDone }: Props) {
         steps={TOUR_STEPS}
         run={tourRun}
         stepIndex={tourStepIndex}
-        callback={handleTourCallback}
+        onEvent={handleTourCallback}
         continuous
-        showSkipButton
-        showProgress
-        disableScrolling
-        spotlightClicks={false}
+        options={{
+          buttons: ["close", "primary", "skip"],
+          showProgress: true,
+          skipBeacon: true,
+          skipScroll: true,
+          blockTargetInteraction: true,
+          primaryColor: "#5FD3E3",
+          backgroundColor: "var(--fiq-bg-surface)",
+          textColor: "var(--fiq-text)",
+          overlayColor: "rgba(6, 15, 18, 0.6)",
+          zIndex: 10000,
+        }}
         styles={{
-          options: {
-            primaryColor: "#5FD3E3",
-            backgroundColor: "var(--fiq-bg-surface)",
-            textColor: "var(--fiq-text)",
-            arrowColor: "var(--fiq-bg-surface)",
-            overlayColor: "rgba(6, 15, 18, 0.6)",
-            zIndex: 10000,
-          },
           tooltip: {
             borderRadius: 10,
             border: "1px solid var(--fiq-border-md)",
           },
-          buttonNext: {
+          buttonPrimary: {
             backgroundColor: "#5FD3E3",
             color: "#0B2026",
             borderRadius: 6,
