@@ -29,10 +29,10 @@ export default function Sidebar({ view, onViewChange }: Props) {
 
   const tip: React.CSSProperties = {
     position: "absolute", left: 36, top: "50%", transform: "translateY(-50%)",
-    background: "#1e3a42", color: "var(--fiq-text)",
+    background: "rgba(15,23,42,0.92)", color: "#ffffff",
     fontSize: 10, padding: "3px 8px", borderRadius: 4,
     whiteSpace: "nowrap", pointerEvents: "none",
-    border: "1px solid var(--fiq-border-strong)", zIndex: 50,
+    border: "1px solid rgba(255,255,255,0.1)", zIndex: 50,
   };
 
   return (
