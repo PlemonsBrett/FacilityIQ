@@ -4,20 +4,23 @@ import { z } from 'zod';
 const adjustedTrustScoreSql = `
   CASE
     WHEN COUNT(t.trust_score) = 0 THEN NULL
-    ELSE GREATEST(0, LEAST(1,
-      AVG(t.trust_score)
-      - (GREATEST(0, 3 - COUNT(t.trust_score)) * 0.10)
-      - ((
-          CASE WHEN MAX(f.official_phone) IS NULL THEN 1 ELSE 0 END +
-          CASE WHEN MAX(f.email) IS NULL THEN 1 ELSE 0 END +
-          CASE WHEN MAX(f.official_website) IS NULL THEN 1 ELSE 0 END +
-          CASE WHEN MAX(f.year_established) IS NULL THEN 1 ELSE 0 END +
-          CASE WHEN MAX(f.capacity) IS NULL THEN 1 ELSE 0 END +
-          CASE WHEN MAX(f.number_doctors) IS NULL THEN 1 ELSE 0 END +
-          CASE WHEN MAX(f.description) IS NULL THEN 1 ELSE 0 END
-        ) * 0.03)
-      - ((100 - COALESCE(q.quality_score, 100)) / 400.0)
-    ))
+    ELSE LEAST(
+      GREATEST(0, LEAST(1,
+        AVG(t.trust_score)
+        - (GREATEST(0, 3 - COUNT(t.trust_score)) * 0.10)
+        - ((
+            CASE WHEN MAX(f.official_phone) IS NULL THEN 1 ELSE 0 END +
+            CASE WHEN MAX(f.email) IS NULL THEN 1 ELSE 0 END +
+            CASE WHEN MAX(f.official_website) IS NULL THEN 1 ELSE 0 END +
+            CASE WHEN MAX(f.year_established) IS NULL THEN 1 ELSE 0 END +
+            CASE WHEN MAX(f.capacity) IS NULL THEN 1 ELSE 0 END +
+            CASE WHEN MAX(f.number_doctors) IS NULL THEN 1 ELSE 0 END +
+            CASE WHEN MAX(f.description) IS NULL THEN 1 ELSE 0 END
+          ) * 0.03)
+        - ((100 - COALESCE(q.quality_score, 100)) / 400.0)
+      )),
+      CASE WHEN MAX(r.status) = 'validation_complete' THEN 1 ELSE 0.90 END
+    )
   END
 `;
 
@@ -112,6 +115,7 @@ createApp({
                 FROM public.facilities f
                 LEFT JOIN public.facilities_trust_signals t ON f.unique_id = t.facility_id
                 LEFT JOIN public.facilities_quality_scores q ON q.facility_id = f.unique_id
+                LEFT JOIN facilityiq.facility_review r ON r.facility_id = f.unique_id
                 GROUP BY f.unique_id, q.quality_score
               ) x
             `),
@@ -203,6 +207,7 @@ createApp({
             FROM public.facilities f
             LEFT JOIN public.facilities_trust_signals t ON f.unique_id = t.facility_id
             LEFT JOIN public.facilities_quality_scores q ON q.facility_id = f.unique_id
+            LEFT JOIN facilityiq.facility_review r ON r.facility_id = f.unique_id
             WHERE ($1::text IS NULL OR
               f.name ILIKE $1 OR
               f.description ILIKE $1 OR
@@ -248,6 +253,7 @@ createApp({
                FROM public.facilities f
                LEFT JOIN public.facilities_trust_signals t ON f.unique_id = t.facility_id
                LEFT JOIN public.facilities_quality_scores q ON q.facility_id = f.unique_id
+               LEFT JOIN facilityiq.facility_review r ON r.facility_id = f.unique_id
                WHERE f.unique_id = $1
                GROUP BY
                       f.unique_id,
