@@ -12,7 +12,7 @@ variables:
 resources:
   apps:
     app:
-      name: "facilityiq-app"
+      name: "facilityiq"
       description: "A Databricks App powered by AppKit"
       source_code_path: ./
       # Needed for app-layer trust-score reruns against Foundation Model serving endpoints.

@@ -1,8 +1,11 @@
-import type { FacilityListItem, FacilityDetail, UserAction, ReviewCard, ReviewStatus, FieldOverride, TrustRerunResult, CleanupSuggestionResult } from "../types";
+import type { DashboardData, FacilityListItem, FacilityDetail, UserAction, ReviewCard, ReviewStatus, FieldOverride, TrustRerunResult, CleanupSuggestionResult } from "../types";
+import { buildDashboardDataFromList } from "./dashboard";
 import {
+  DUMMY_LIST,
   filterDummyList,
   DUMMY_DETAILS,
   DUMMY_META,
+  allActedFacilityIds,
   latestLocalActions,
   saveLocalAction,
   getLocalBoardColumn,
@@ -32,6 +35,22 @@ export interface FacilitiesParams {
 
 // null = unknown, true = real data exists, false = DB empty → use dummy
 let _facilityDataAvailable: boolean | null = null;
+
+function buildLocalDashboardData(analystId: string): DashboardData {
+  const actions = allActedFacilityIds(analystId).flatMap((facilityId) =>
+    latestLocalActions(facilityId, analystId),
+  );
+  return buildDashboardDataFromList(DUMMY_LIST, DUMMY_DETAILS, actions);
+}
+
+export async function fetchDashboardData(analystId: string): Promise<DashboardData | null> {
+  const qs = new URLSearchParams({ analyst_id: analystId });
+  const result = await tryFetch<DashboardData>(`/api/dashboard?${qs}`);
+  if (result !== null) return result;
+
+  if (import.meta.env.DEV) return buildLocalDashboardData(analystId);
+  return null;
+}
 
 export async function fetchFacilities(params: FacilitiesParams): Promise<FacilityListItem[]> {
   const { q, page, limit, state, facilityType, contradictionsOnly } = params;
