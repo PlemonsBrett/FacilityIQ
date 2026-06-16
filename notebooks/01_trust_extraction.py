@@ -119,6 +119,9 @@ def extract_signals(facility_row: dict) -> list[dict]:
             err_df.write.format("delta").mode("append").saveAsTable(f"{CATALOG}.{SCHEMA}.extraction_errors")
             return []
 
+# Ensure the target table exists before querying it for the skip list
+create_trust_signals_table(spark, CATALOG, SCHEMA)
+
 # Load facilities that don't yet have signals
 facilities_df = spark.sql(f"""
   SELECT facility_id, facility_name, facility_type, state,
@@ -134,9 +137,6 @@ facilities_df = spark.sql(f"""
 """).toPandas()
 
 print(f"Facilities to process: {len(facilities_df)}")
-
-# Ensure the target table exists with the correct schema and partitioning
-create_trust_signals_table(spark, CATALOG, SCHEMA)
 
 all_signals = []
 for i, row in facilities_df.iterrows():
