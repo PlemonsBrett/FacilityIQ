@@ -30,9 +30,9 @@ export interface FacilityDetail {
     state: string | null;
     district: string | null;
     description: string | null;
-    capability: string | null;
-    procedure: string | null;
-    equipment: string | null;
+    capability?: string | null;
+    procedure?: string | null;
+    equipment?: string | null;
     capacity: number | null;
     year_established: number | null;
     number_doctors: number | null;
