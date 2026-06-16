@@ -18,7 +18,7 @@ const WelcomeContent = () => (
     />
     <p style={{ margin: 0, lineHeight: 1.6 }}>
       An LLM-powered trust analysis platform for 10,000 India healthcare facilities,
-      built on Databricks. Let's walk through how it works.
+      built on Databricks. Let us walk through how it works.
     </p>
   </div>
 );
@@ -32,13 +32,13 @@ export const TOUR_STEPS: TourStep[] = [
     content: <WelcomeContent />,
   },
 
-  // ── Step 2: The scale (Dashboard KPIs) ────────────────────────────────────
+  // ── Step 2: KPI row ───────────────────────────────────────────────────────
   {
     target: '[data-tour="dashboard-kpis"]',
     placement: "bottom",
-    title: "The scale",
+    title: "The numbers at a glance",
     content:
-      "10,000 healthcare facilities processed in a single Databricks batch. One LLM call per facility extracts four trust dimensions simultaneously and writes to Delta Lake.",
+      "Before opening a single record, FacilityIQ shows the situation. Facilities processed, average trust score across all of them, contradictions surfaced, and analyst actions taken. This is the view planners have never had before.",
     meta: { view: "dashboard" },
   },
 
@@ -46,103 +46,140 @@ export const TOUR_STEPS: TourStep[] = [
   {
     target: '[data-tour="score-distribution"]',
     placement: "right",
-    title: "Trust score distribution",
+    title: "Where the scores land",
     content:
-      "This chart shows how trust scores spread across all 10,000 facilities. Scores above 70 are high-trust; below 40 need close review. The distribution tells analysts where to focus first.",
+      "Most facilities cluster between 60 and 80. The tail on the left carries the most risk for any routing decision. The chart shows at a glance where to focus first.",
   },
 
-  // ── Step 4: Search ────────────────────────────────────────────────────────
+  // ── Step 4: Trust tier donut ──────────────────────────────────────────────
+  {
+    target: '[data-tour="trust-tier-donut"]',
+    placement: "left",
+    title: "Breaking it into tiers",
+    content:
+      "Roughly a third of facilities hit the high-trust threshold. The rest fall into medium, low, or return insufficient data across key dimensions. This breakdown drives how analysts prioritize their review queue.",
+  },
+
+  // ── Step 5: Dimension averages ────────────────────────────────────────────
+  {
+    target: '[data-tour="dimension-averages"]',
+    placement: "right",
+    title: "Which claims hold up",
+    content:
+      "Procedure claims score the highest because they are specific and cross-referenceable. Completeness reveals the dimensions where source data simply was not there. Analysts see exactly where confidence is earned and where it is not.",
+  },
+
+  // ── Step 6: Type breakdown ────────────────────────────────────────────────
+  {
+    target: '[data-tour="type-breakdown"]',
+    placement: "left",
+    title: "Type changes the risk profile",
+    content:
+      "PHCs and CHCs carry higher contradiction rates than hospitals. Smaller facilities, less structured source data, more opportunities for claims to go unverified. This is where the pipeline pays off most.",
+  },
+
+  // ── Step 7: Top / Bottom facilities ──────────────────────────────────────
+  {
+    target: '[data-tour="top-bottom-facilities"]',
+    placement: "top",
+    title: "The two lists worth acting on",
+    content:
+      "At the top: facilities with the strongest evidence across all four dimensions, ready for outreach. At the bottom: records that need review before any routing decision. Both lists are immediately actionable.",
+  },
+
+  // ── Step 8: Search ────────────────────────────────────────────────────────
   {
     target: '[data-tour="search-bar"]',
     placement: "right",
-    title: "Search",
+    title: "10,000 facilities, one search",
     content:
-      "Search across all 10,000 facilities by name, description, or clinical capability.",
+      "Any facility in the dataset is findable by name, clinical specialty, or free-text description. The list responds in real time.",
     meta: { view: "desk" },
   },
 
-  // ── Step 5: State filter ─────────────────────────────────────────────────
+  // ── Step 9: State filter ──────────────────────────────────────────────────
   {
     target: '[data-tour="state-filter"]',
     placement: "bottom",
-    title: "Filter by state",
-    content: "Narrow the list to a specific state. Try selecting one now.",
+    title: "Zoom into a state",
+    content:
+      "Select Karnataka. The hospitals there include some of the most interesting trust patterns in the dataset, including a facility with a flagged contradiction worth reviewing.",
     blockTargetInteraction: false,
   },
 
-  // ── Step 6: Type filter ───────────────────────────────────────────────────
+  // ── Step 10: Type filter ──────────────────────────────────────────────────
   {
     target: '[data-tour="type-filter"]',
     placement: "bottom",
-    title: "Filter by facility type",
-    content: "Scope to hospitals, PHCs, CHCs, or any other facility type.",
+    title: "Focus on hospitals",
+    content: "Select Hospital to narrow the list further.",
     blockTargetInteraction: false,
   },
 
-  // ── Step 7: Contradiction filter ─────────────────────────────────────────
+  // ── Step 11: Contradiction filter ────────────────────────────────────────
   {
     target: '[data-tour="contradiction-filter"]',
     placement: "bottom",
-    title: "The contradiction filter",
+    title: "Show only the flagged cases",
     content:
-      "The LLM flags facilities where structured fields conflict with free-text claims — a hospital listed as a basic PHC, for example. These are the highest-priority cases. Click to activate it.",
+      "Enable this. Two Karnataka hospitals have contradictions flagged by the pipeline. These are the records worth reviewing before any routing decision is made.",
     blockTargetInteraction: false,
   },
 
-  // ── Step 8: Trust scorecard (auto-select first facility) ──────────────────
+  // ── Step 12: Trust scorecard (auto-select first filtered result) ──────────
   {
     target: '[data-tour="trust-scorecard"]',
     placement: "left",
-    title: "Overall trust score",
+    title: "A contradiction in context",
     content:
-      "Selecting a facility shows its overall trust score, review status, and flag controls. The score is the average across all scoreable dimensions.",
-    meta: { selectFirst: true },
+      "High score overall, one flag. This facility performs well across most dimensions, but the pipeline detected a conflict between a claim in the description and what the structured fields support. That insight would have been invisible without FacilityIQ.",
+    meta: { view: "desk", selectFirst: true },
   },
 
-  // ── Step 9: Trust dimensions ──────────────────────────────────────────────
+  // ── Step 13: Trust dimensions ─────────────────────────────────────────────
   {
     target: '[data-tour="trust-dimensions"]',
     placement: "left",
-    title: "Four trust dimensions",
+    title: "Four dimensions, one honest picture",
     content:
-      "Capability, equipment, procedure, and completeness are scored independently. Dimensions with insufficient source data show Score Suppressed — an honest gap, not a zero.",
+      "Capability, equipment, procedure, and completeness are scored independently. When source data is insufficient, the card shows Score Suppressed rather than a misleading low number. An honest gap is more useful than a fabricated confidence.",
   },
 
-  // ── Step 10: Evidence panel ────────────────────────────────────────────────
+  // ── Step 14: Evidence panel ───────────────────────────────────────────────
   {
     target: '[data-tour="evidence-panel"]',
     placement: "left",
-    title: "Evidence in context",
+    title: "Every claim, cited",
     content:
-      "Every score is grounded in an exact quote from the source text, highlighted inline. Hover any highlighted phrase to read the evidence bubble. Click Show all evidence to surface every annotation at once.",
+      "Hover any highlighted phrase to read the exact quote that drove the score. Click Show all evidence to surface every annotation at once. Nothing is inferred. If the text does not support a claim, the system returns Insufficient Data.",
   },
 
-  // ── Step 11: Analyst actions (workbench) ──────────────────────────────────
+  // ── Step 15: Analyst actions (workbench) ──────────────────────────────────
   {
     target: '[data-tour="workbench"]',
     placement: "left",
-    title: "Analyst actions",
+    title: "What analysts do next",
     content:
-      "Leave a note for teammates, shortlist the facility for follow-up, flag a contradiction for review, or override a dimension score with justification. All actions persist to Lakebase.",
+      "Shortlist high-trust facilities for outreach, flag contradictions for follow-up, leave notes for teammates, or override a score with justification. Every action persists instantly and is visible to the whole team.",
   },
 
-  // ── Step 12: Kanban overview ──────────────────────────────────────────────
+  // ── Step 16: Kanban overview ──────────────────────────────────────────────
   {
     target: '[data-tour="kanban-board"]',
     placement: "top",
     title: "The review pipeline",
     content:
-      "Every facility moves through six stages: Not Started, In Review, Email Sent, Called, Parked, and Validated. The whole team sees 10,000 facilities in one shared view.",
+      "Six stages: Not Started, In Review, Email Sent, Called, Parked, and Validated. Every one of the 10,000 facilities moves through this board as the team works through the dataset.",
     meta: { view: "board" },
   },
 
-  // ── Step 13: Kanban interaction ───────────────────────────────────────────
+  // ── Step 17: Kanban drag interaction ─────────────────────────────────────
   {
     target: '[data-tour="kanban-not-started"]',
     placement: "right",
     title: "Moving a facility",
     content:
-      "Drag any card to the next column to advance it, or open the status menu on a facility's detail page to update it from there. Give it a try.",
+      "Drag any card into the next column to advance it. Or open the status menu from a facility detail page to update it there. Both routes update the same shared board in real time.",
     blockTargetInteraction: false,
   },
 ];

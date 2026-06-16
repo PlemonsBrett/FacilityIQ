@@ -196,7 +196,7 @@ export default function DashboardPage({ analystId, onNavigateToFacility }: Props
         </div>
 
         {/* Trust tier donut */}
-        <div style={card}>
+        <div data-tour="trust-tier-donut" style={card}>
           <div style={sectionLabel}>Trust Tier Breakdown</div>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <PieChart width={120} height={120}>
@@ -229,7 +229,7 @@ export default function DashboardPage({ analystId, onNavigateToFacility }: Props
       {/* Row 2: Dimension averages + Facility type breakdown */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
         {/* Dimension averages */}
-        <div style={card}>
+        <div data-tour="dimension-averages" style={card}>
           <div style={sectionLabel}>Average Score by Dimension</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             {stats.dimAvgs.map(({ dim, avg }) => (
@@ -251,7 +251,7 @@ export default function DashboardPage({ analystId, onNavigateToFacility }: Props
         </div>
 
         {/* Facility type breakdown */}
-        <div style={card}>
+        <div data-tour="type-breakdown" style={card}>
           <div style={sectionLabel}>Facilities by Type</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
             {stats.typeBreakdown.map(({ type, count }) => (
@@ -284,7 +284,7 @@ export default function DashboardPage({ analystId, onNavigateToFacility }: Props
       </div>
 
       {/* Top / Bottom facilities */}
-      <div style={card}>
+      <div data-tour="top-bottom-facilities" style={card}>
         <div style={sectionLabel}>Top & Bottom Facilities by Trust Score</div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
           {[

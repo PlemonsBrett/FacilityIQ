@@ -86,3 +86,40 @@ echo "✓ All synced tables created. Pipeline:"
 echo "  1. Run notebooks (00_setup → 01_trust_extraction)"
 echo "  2. Re-run this script to refresh Lakebase"
 echo "  3. App reads from facilityiq-lakebase.public.*"
+
+# ── Demo facility seed ────────────────────────────────────────────────────────
+# Upsert Narayana Health City, Bengaluru as a known demo record so the
+# Karnataka + Hospital + Contradictions filter flow in the guided tour
+# always lands on a facility with rich evidence and a flagged contradiction.
+#
+# The real trust signals for this facility are written by the extraction
+# pipeline; this upsert only guarantees the gold row exists with the right
+# identifiers in case the sync hasn't completed yet.
+#
+# Run: after sync_table calls complete.
+echo ""
+echo "▶ Seeding demo facility (Narayana Health City, Bengaluru)..."
+
+PATH="/opt/homebrew/opt/libpq/bin:$PATH" databricks psql --project facilityiq -- -c "
+INSERT INTO public.facilities (
+  unique_id, name, facility_type_id, address_state_or_region,
+  address_city, description, capability, overridden_fields
+)
+VALUES (
+  'narayana-health-city-bengaluru',
+  'Narayana Health City, Bengaluru',
+  'hospital',
+  'Karnataka',
+  'Bengaluru',
+  'Multi-super-specialty hospital offering cardiac surgery, bone marrow transplant, nephrology, and paediatric cardiology. Description references level-1 trauma centre capabilities.',
+  'Cardiac surgery, bone marrow transplant, nephrology, paediatric cardiology',
+  ARRAY[]::text[]
+)
+ON CONFLICT (unique_id) DO UPDATE SET
+  name                    = EXCLUDED.name,
+  facility_type_id        = EXCLUDED.facility_type_id,
+  address_state_or_region = EXCLUDED.address_state_or_region,
+  address_city            = EXCLUDED.address_city,
+  description             = EXCLUDED.description,
+  capability              = EXCLUDED.capability;
+" 2>&1 && echo "  ✓ Demo facility seeded" || echo "  ⚠ Demo facility seed skipped (table may not exist yet)"
