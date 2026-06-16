@@ -69,7 +69,7 @@ export default function SearchPanel({ onSelect, selectedId }: Props) {
       </div>
 
       {/* Search */}
-      <div style={{ padding: "10px 12px", borderBottom: "1px solid var(--fiq-border)", flexShrink: 0 }}>
+      <div data-tour="search-bar" style={{ padding: "10px 12px", borderBottom: "1px solid var(--fiq-border)", flexShrink: 0 }}>
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
@@ -84,7 +84,7 @@ export default function SearchPanel({ onSelect, selectedId }: Props) {
       </div>
 
       {/* Filters */}
-      <div style={{
+      <div data-tour="search-filters" style={{
         padding: "6px 12px", borderBottom: "1px solid var(--fiq-border)",
         display: "flex", gap: 5, flexWrap: "wrap", flexShrink: 0,
       }}>

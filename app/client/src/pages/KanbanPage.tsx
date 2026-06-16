@@ -365,6 +365,7 @@ export default function KanbanPage({ onNavigateToFacility }: Props) {
       ) : (
         <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
           <div
+            data-tour="kanban-board"
             className="flex-1 overflow-x-auto overflow-y-hidden px-6 py-4"
             style={{ display: "flex", gap: 12, alignItems: "flex-start" }}
           >

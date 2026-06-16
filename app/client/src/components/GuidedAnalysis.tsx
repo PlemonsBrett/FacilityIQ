@@ -862,7 +862,7 @@ export default function GuidedAnalysis({ detail, analystId }: Props) {
       <div className="max-w-3xl mx-auto px-6 py-8 flex flex-col gap-6">
 
         {/* Facility header */}
-        <div className="flex items-start justify-between gap-4">
+        <div data-tour="trust-scorecard" className="flex items-start justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold tracking-tight mb-2" style={{ color: "var(--fiq-text)" }}>
               {facility.facility_name}
@@ -954,6 +954,7 @@ export default function GuidedAnalysis({ detail, analystId }: Props) {
 
         {/* Facility data */}
         <div
+          data-tour="evidence-panel"
           className="rounded-2xl p-6 flex flex-col gap-5"
           style={{ background: "var(--fiq-bg-surface)", border: "1px solid var(--fiq-border)" }}
         >

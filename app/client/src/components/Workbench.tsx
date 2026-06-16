@@ -29,7 +29,7 @@ export default function Workbench({ facilityId, analystId }: Props) {
   }
 
   return (
-    <div className="rounded-2xl overflow-hidden" style={{ border: "1px solid var(--fiq-border)" }}>
+    <div data-tour="workbench" className="rounded-2xl overflow-hidden" style={{ border: "1px solid var(--fiq-border)" }}>
       <div
         className="px-4 py-2 text-[9px] font-bold uppercase tracking-widest"
         style={{ color: "var(--fiq-text-code)", background: "var(--fiq-bg-surface)", borderBottom: "1px solid var(--fiq-border)" }}

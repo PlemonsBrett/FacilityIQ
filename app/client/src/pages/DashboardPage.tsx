@@ -156,7 +156,7 @@ export default function DashboardPage({ analystId, onNavigateToFacility }: Props
       </div>
 
       {/* KPI row */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 10, marginBottom: 16 }}>
+      <div data-tour="dashboard-kpis" style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 10, marginBottom: 16 }}>
         {[
           { label: "Facilities", value: stats.total, color: "var(--fiq-text)" },
           { label: "Avg Trust Score", value: stats.avgScore ?? "—", color: trustColor(stats.avgScore) },
@@ -176,7 +176,7 @@ export default function DashboardPage({ analystId, onNavigateToFacility }: Props
       {/* Row 1: Bar chart + Donut */}
       <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 12, marginBottom: 12 }}>
         {/* Score distribution */}
-        <div style={card}>
+        <div data-tour="score-distribution" style={card}>
           <div style={sectionLabel}>Score Distribution — All Facilities</div>
           <ResponsiveContainer width="100%" height={130}>
             <BarChart data={stats.distribution} margin={{ top: 4, right: 4, bottom: 0, left: -28 }}>
