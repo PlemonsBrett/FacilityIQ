@@ -1,4 +1,5 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
+import Joyride, { ACTIONS, EVENTS, type CallBackProps } from "react-joyride";
 import type { FacilityDetail } from "./types";
 import SearchPanel from "./components/SearchPanel";
 import GuidedAnalysis from "./components/GuidedAnalysis";
@@ -7,15 +8,82 @@ import DashboardPage from "./pages/DashboardPage";
 import KanbanPage from "./pages/KanbanPage";
 import { ANALYST_ID } from "./lib/analyst";
 import { fetchFacilityDetail } from "./lib/api";
+import { TOUR_STEPS } from "./lib/tour";
 
 export type View = "desk" | "dashboard" | "board";
 export { ANALYST_ID };
 
-export default function App() {
+const TOUR_KEY = "fiq_tour_seen";
+
+interface Props {
+  splashDone: boolean;
+}
+
+export default function App({ splashDone }: Props) {
   const [view, setView] = useState<View>("desk");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<FacilityDetail | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
+
+  // Tour state
+  const [tourRun, setTourRun] = useState(false);
+  const [tourStepIndex, setTourStepIndex] = useState(0);
+  const firstFacilityIdRef = useRef<string | null>(null);
+  const tourWaitingForFacility = useRef(false);
+
+  // Auto-start after splash
+  useEffect(() => {
+    if (!splashDone) return;
+    if (!localStorage.getItem(TOUR_KEY)) {
+      setTourRun(true);
+    }
+  }, [splashDone]);
+
+  // Advance tour step once facility detail loads (for selectFirst steps)
+  useEffect(() => {
+    if (tourWaitingForFacility.current && detail) {
+      tourWaitingForFacility.current = false;
+      // Let React finish rendering the scorecard before Joyride scans
+      setTimeout(() => setTourStepIndex((i) => i + 1), 150);
+    }
+  }, [detail]);
+
+  function startTour() {
+    setTourStepIndex(0);
+    setTourRun(true);
+  }
+
+  function resetDemo() {
+    localStorage.removeItem(TOUR_KEY);
+    window.location.href = window.location.pathname + "?splash=on";
+  }
+
+  const selectFirstFacility = useCallback(() => {
+    const id = firstFacilityIdRef.current;
+    if (id) setSelectedId(id);
+  }, []);
+
+  const handleTourCallback = useCallback(
+    ({ action, index, type }: CallBackProps) => {
+      if (type === EVENTS.STEP_BEFORE) {
+        const step = TOUR_STEPS[index];
+        if (step.meta?.view) setView(step.meta.view as View);
+        if (step.meta?.selectFirst) {
+          tourWaitingForFacility.current = true;
+          selectFirstFacility();
+          return; // defer step advance until detail loads
+        }
+      }
+      if (type === EVENTS.STEP_AFTER && action !== ACTIONS.CLOSE) {
+        setTourStepIndex(index + 1);
+      }
+      if (action === ACTIONS.CLOSE || type === EVENTS.TOUR_END) {
+        setTourRun(false);
+        localStorage.setItem(TOUR_KEY, "1");
+      }
+    },
+    [selectFirstFacility],
+  );
 
   useEffect(() => {
     if (!selectedId) { setDetail(null); return; }
@@ -36,7 +104,45 @@ export default function App() {
       background: "var(--fiq-bg)", color: "var(--fiq-text)",
       fontFamily: "system-ui, -apple-system, 'Segoe UI', sans-serif",
     }}>
-      <Sidebar view={view} onViewChange={setView} />
+      <Joyride
+        steps={TOUR_STEPS}
+        run={tourRun}
+        stepIndex={tourStepIndex}
+        callback={handleTourCallback}
+        continuous
+        showSkipButton
+        showProgress
+        disableScrolling
+        spotlightClicks={false}
+        styles={{
+          options: {
+            primaryColor: "#5FD3E3",
+            backgroundColor: "var(--fiq-bg-surface)",
+            textColor: "var(--fiq-text)",
+            arrowColor: "var(--fiq-bg-surface)",
+            overlayColor: "rgba(6, 15, 18, 0.6)",
+            zIndex: 10000,
+          },
+          tooltip: {
+            borderRadius: 10,
+            border: "1px solid var(--fiq-border-md)",
+          },
+          buttonNext: {
+            backgroundColor: "#5FD3E3",
+            color: "#0B2026",
+            borderRadius: 6,
+            fontWeight: 700,
+          },
+          buttonBack: {
+            color: "var(--fiq-text-subdued)",
+          },
+          buttonSkip: {
+            color: "var(--fiq-text-faintest)",
+          },
+        }}
+      />
+
+      <Sidebar view={view} onViewChange={setView} onStartTour={startTour} onResetDemo={resetDemo} />
 
       {view === "desk" && (
         <>
@@ -45,7 +151,11 @@ export default function App() {
             borderRight: "1px solid var(--fiq-border)",
             display: "flex", flexDirection: "column", overflow: "hidden",
           }}>
-            <SearchPanel onSelect={setSelectedId} selectedId={selectedId} />
+            <SearchPanel
+              onSelect={setSelectedId}
+              selectedId={selectedId}
+              onFirstFacilityId={(id) => { firstFacilityIdRef.current = id; }}
+            />
           </div>
           <div style={{ flex: 1, overflowY: "auto", background: "var(--fiq-bg)" }}>
             {loadingDetail ? (

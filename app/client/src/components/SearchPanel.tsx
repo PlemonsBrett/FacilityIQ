@@ -7,11 +7,12 @@ import { ANALYST_ID } from "../lib/analyst";
 interface Props {
   onSelect: (id: string) => void;
   selectedId: string | null;
+  onFirstFacilityId?: (id: string | null) => void;
 }
 
 const LIMIT = 25;
 
-export default function SearchPanel({ onSelect, selectedId }: Props) {
+export default function SearchPanel({ onSelect, selectedId, onFirstFacilityId }: Props) {
   const [query, setQuery] = useState("");
   const [state, setState] = useState("");
   const [facilityType, setFacilityType] = useState("");
@@ -35,7 +36,11 @@ export default function SearchPanel({ onSelect, selectedId }: Props) {
   function load(q: string, pg: number) {
     setLoading(true);
     fetchFacilities({ q, page: pg, limit: LIMIT, state, facilityType, contradictionsOnly })
-      .then((data) => { setFacilities(data); setLoading(false); })
+      .then((data) => {
+        setFacilities(data);
+        setLoading(false);
+        if (pg === 1) onFirstFacilityId?.(data[0]?.facility_id ?? null);
+      })
       .catch(() => setLoading(false));
   }
 
