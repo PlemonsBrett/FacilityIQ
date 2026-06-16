@@ -63,9 +63,10 @@ sync_table \
   '"unique_id"'
 
 # 2. Trust signals — LLM-extracted trust scores per (facility, dimension)
+# NOTE: target is public.trust_signals (no prefix) to match server.ts queries
 sync_table \
   "workspace.facilityiq.facilities_trust_signals" \
-  "facilityiq-lakebase.public.facilities_trust_signals" \
+  "facilityiq-lakebase.public.trust_signals" \
   '"facility_id","dimension"'
 
 # 3. Quality scores — data-record integrity score per facility

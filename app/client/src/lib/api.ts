@@ -1,10 +1,14 @@
-import type { FacilityListItem, FacilityDetail, UserAction } from "../types";
+import type { FacilityListItem, FacilityDetail, UserAction, ReviewCard, ReviewStatus } from "../types";
 import {
   filterDummyList,
   DUMMY_DETAILS,
   DUMMY_META,
   latestLocalActions,
   saveLocalAction,
+  getLocalBoardColumn,
+  setLocalKanbanStatus,
+  getLocalUnstartedFacilities,
+  getLocalReviewEntry,
 } from "./dummy";
 
 async function tryFetch<T>(url: string, init?: RequestInit): Promise<T | null> {
@@ -115,4 +119,45 @@ export async function postAction(
     dimension ?? null,
     override_score ?? null,
   );
+}
+
+export async function fetchBoardColumn(status: ReviewStatus): Promise<ReviewCard[]> {
+  if (status === "not_started") {
+    const result = await tryFetch<ReviewCard[]>("/api/review/board/unstarted?limit=50");
+    // Empty result means DB is empty or unreachable — show dummy facilities
+    if (result !== null && result.length > 0) return result;
+    return getLocalUnstartedFacilities();
+  }
+  const result = await tryFetch<ReviewCard[]>(`/api/review/board?status=${status}&limit=200`);
+  if (result !== null && result.length > 0) return result;
+  return getLocalBoardColumn(status);
+}
+
+export async function postReviewStatus(
+  facilityId: string,
+  status: ReviewStatus,
+  parked_reason: string | null = null,
+  notes: string | null = null,
+): Promise<void> {
+  const result = await tryFetch<ReviewCard>(`/api/review/${facilityId}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ status, parked_reason, notes }),
+  });
+  if (result === null) {
+    setLocalKanbanStatus(facilityId, status, parked_reason, notes);
+  }
+}
+
+export async function fetchReviewStatus(
+  facilityId: string,
+): Promise<{ status: ReviewStatus; parked_reason: string | null }> {
+  const result = await tryFetch<{ status: ReviewStatus; parked_reason: string | null }>(
+    `/api/review/${facilityId}`,
+  );
+  if (result !== null) return { status: result.status, parked_reason: result.parked_reason ?? null };
+  const local = getLocalReviewEntry(facilityId);
+  return local
+    ? { status: local.status as ReviewStatus, parked_reason: local.parked_reason }
+    : { status: "not_started", parked_reason: null };
 }

@@ -48,7 +48,6 @@ resources:
           notebook_task:
             notebook_path: ${workspace.root_path}/files/notebooks/00_setup.py
             source: WORKSPACE
-          job_cluster_key: pipeline_cluster
 
         - task_key: trust_extraction
           description: >
@@ -59,7 +58,6 @@ resources:
           notebook_task:
             notebook_path: ${workspace.root_path}/files/notebooks/01_trust_extraction.py
             source: WORKSPACE
-          job_cluster_key: pipeline_cluster
 
         - task_key: validate_signals
           description: Spot-check extraction quality
@@ -68,13 +66,3 @@ resources:
           notebook_task:
             notebook_path: ${workspace.root_path}/files/notebooks/02_validate_signals.py
             source: WORKSPACE
-          job_cluster_key: pipeline_cluster
-
-      job_clusters:
-        - job_cluster_key: pipeline_cluster
-          new_cluster:
-            spark_version: 15.4.x-scala2.12
-            node_type_id: i3.xlarge
-            num_workers: 1
-            spark_conf:
-              spark.databricks.delta.preview.enabled: "true"

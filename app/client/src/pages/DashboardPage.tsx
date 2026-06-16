@@ -183,7 +183,7 @@ export default function DashboardPage({ analystId, onNavigateToFacility }: Props
               <XAxis dataKey="label" tick={{ fontSize: 8, fill: "var(--fiq-text-code)" as string }} axisLine={false} tickLine={false} />
               <YAxis tick={{ fontSize: 8, fill: "var(--fiq-text-code)" as string }} axisLine={false} tickLine={false} allowDecimals={false} />
               <Tooltip
-                contentStyle={{ background: "var(--fiq-bg-surface)", border: "1px solid var(--fiq-border-strong)", borderRadius: 4, fontSize: 10 }}
+                contentStyle={{ background: "var(--fiq-bg-surface)", border: "1px solid var(--fiq-border-strong)", borderRadius: 4, fontSize: 10, color: "var(--fiq-text)" }}
                 cursor={{ fill: "rgba(255,255,255,0.04)" }}
               />
               <Bar dataKey="count" radius={[3, 3, 0, 0]}>

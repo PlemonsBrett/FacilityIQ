@@ -4,38 +4,59 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Context
 
-FacilityIQ is a Databricks hackathon project (Databricks Data + AI Summit 2026, June 15–16) that processes a 10,000-record India healthcare facility dataset through an LLM trust-extraction pipeline, then exposes a Streamlit analyst interface. The repo is early-stage — most files under `app/`, `notebooks/`, and `prompts/` are stubs to be implemented.
+FacilityIQ is a Databricks hackathon project (Databricks Data + AI Summit 2026, June 15–16) that processes a 10,000-record India healthcare facility dataset through an LLM trust-extraction pipeline, then exposes a TypeScript/AppKit analyst interface on Databricks Apps.
 
 ## Development Environment
 
-Python 3.12. Dependencies are managed with `uv` via `pyproject.toml`. The app runs on Databricks Apps (Streamlit) and the pipeline runs as a Databricks Workflow.
+**Pipeline (Python 3.12):** Dependencies managed with `uv` via `pyproject.toml`. Notebooks run inside Databricks — `spark` and Delta Lake APIs require a cluster context.
+
+**App (TypeScript/Node.js):** Located in `app/`. Uses `@databricks/appkit` for the backend and React/Vite for the frontend.
 
 ```bash
-uv sync           # install dependencies
-uv run python app/main.py   # run locally (limited without Databricks cluster)
-```
+# Pipeline
+uv sync
 
-There are no tests yet. Notebooks are designed to run inside Databricks, not locally — `spark` and Delta Lake APIs require a cluster context.
+# App (from app/)
+npm install
+npm run dev     # local dev server (proxies Lakebase via .env)
+npm run build   # build client dist
+```
 
 ## Architecture
 
 ### Data Flow
 
 ```
-FDR CSV → facilities_raw (Delta) → LLM extraction pipeline → facilities_trust_signals (Delta)
-                                                                          ↕
-                                                             Streamlit App (Databricks Apps)
-                                                                          ↕
-                                                          facilities_user_actions (Delta)
+FDR CSV → facilities_raw (Delta) → LLM extraction pipeline → UC Delta tables
+                                                                     ↓
+                                                         Copy to Lakebase (Postgres public.*)
+                                                                     ↓
+                                                  TypeScript/AppKit App (Databricks Apps)
+                                                                     ↕
+                                                    Lakebase Postgres (facilityiq.* schema)
 ```
 
-### Delta Tables
+### Unity Catalog Delta Tables (pipeline output — read-only by app)
 
-Three tables in Unity Catalog:
+- **`workspace.facilityiq.facilities_raw`** — append-only source, all 51 FDR columns preserved. Never mutated.
+- **`workspace.facilityiq.facilities_silver`** — typed and cleaned, one row per facility.
+- **`workspace.facilityiq.facilities_gold`** — silver + latest analyst overrides merged in.
+- **`workspace.facilityiq.facilities_trust_signals`** — LLM extraction output, one row per `(facility_id, dimension)`. Dimensions: `capability`, `equipment`, `procedure`, `completeness`.
+- **`workspace.facilityiq.facilities_quality_scores`** — deterministic, SQL-driven quality scores.
+- **`workspace.facilityiq.facilities_email_outreach`** — keyed by email for outreach campaigns.
 
-- **`facilities_raw`** — append-only source, all 51 FDR columns preserved. Never mutated.
-- **`facilities_trust_signals`** — LLM extraction output, one row per `(facility_id, dimension)`, partitioned by `dimension`. Dimensions: `capability`, `equipment`, `procedure`, `completeness`.
-- **`facilities_user_actions`** — append-only analyst action log (`note | override | shortlist | flag`). Effective state = latest row per `(facility_id, analyst_id, action_type, dimension)` by `updated_at`.
+### Lakebase Postgres Tables (app read/write)
+
+The TypeScript app connects exclusively to Lakebase Postgres via `appkit.lakebase.query()`. Two schemas:
+
+**`public.*` (copied from UC Delta — read by app):**
+- `public.facilities` — facility data (from facilities_gold or silver)
+- `public.trust_signals` — trust signal scores (from facilities_trust_signals)
+
+**`facilityiq.*` (created and owned by app on startup):**
+- `facilityiq.user_actions` — analyst actions (`note | override | shortlist | flag`)
+- `facilityiq.facility_review` — kanban review status per facility
+- `facilityiq.facilities_overrides` — field-level overrides (joined into facilities_gold)
 
 ### LLM Pipeline (`notebooks/01_trust_extraction.py`)
 
@@ -49,20 +70,25 @@ Two critical rules the pipeline enforces:
 
 ```
 app/
-├── main.py                   # Streamlit entry point
-├── components/               # UI panels (search, scorecard, workbench, uncertainty badge)
-├── services/                 # Data access (facility_service, trust_service, action_service)
-└── utils/                    # delta_client.py (connection helpers), session.py (state)
+├── server/server.ts          # Node.js/Express backend (AppKit), all API routes
+├── client/src/               # React/Vite frontend
+│   ├── App.tsx               # Root, routing
+│   ├── pages/                # DashboardPage, KanbanPage
+│   ├── components/           # FacilityCard, GuidedAnalysis, SearchPanel, Workbench, Sidebar
+│   └── lib/api.ts            # All fetch calls to /api/* (falls back to dummy data)
+├── databricks.yml            # App bundle (separate from root pipeline bundle)
+└── app.yaml                  # Databricks App manifest
 ```
 
-Services query Delta via `spark.sql()`. The search query in `facility_service.py` joins `facilities_raw` with `facilities_trust_signals` and takes an `AVG(trust_score)` as the overall score. Analyst actions use append-only writes via `action_df.write.format("delta").mode("append").saveAsTable(...)`.
+The server uses `appkit.lakebase.query()` for all reads and writes — no Spark, no SQL warehouse. The client gracefully falls back to bundled dummy data when the DB is unreachable.
 
 ## Key Design Decisions
 
 - **Single LLM pass per facility** — extracts all dimensions in one call (4x fewer API calls, enables cross-dimension contradiction detection in one context window).
 - **Score suppression over low-confidence scores** — an "Insufficient Data" badge is more honest than a low number that implies the field was assessed.
-- **Append-only action log** — provides full audit trail; Delta time travel makes this free. Latest-wins resolution at read time.
-- **Streamlit over Gradio** — Streamlit's component model fits the multi-panel analyst workbench better than Gradio's model I/O paradigm.
+- **Lakebase Postgres for app reads/writes** — always-on, sub-100ms latency vs. Spark cold starts. UC Delta tables are copied into Lakebase `public.*` for the app to query.
+- **UC Delta for pipeline output** — pipeline writes to Delta (durable, time-travel, medallion SQL); app never touches Delta directly.
+- **TypeScript/AppKit over Streamlit** — AppKit gives full React control for the analyst workbench UI without Python's constraint on interactivity.
 
 ## Notebook Execution Order
 

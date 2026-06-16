@@ -1,9 +1,21 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
-import type { FacilityDetail } from "../types";
+import { Pencil } from "lucide-react";
+import type { FacilityDetail, ReviewStatus } from "../types";
 import { overallScore, scoreToInt, trustColor, trustLabel } from "../types";
 import Workbench from "./Workbench";
-import { postAction } from "../lib/api";
+import { postAction, fetchReviewStatus, postReviewStatus } from "../lib/api";
+
+// ── Review status config ──────────────────────────────────────────────────────
+
+const REVIEW_STATUS_CONFIG: Record<ReviewStatus, { label: string; color: string }> = {
+  not_started:         { label: "Not Started", color: "#94a3b8" },
+  in_progress:         { label: "In Review",   color: "#60a5fa" },
+  email_sent:          { label: "Email Sent",  color: "#a78bfa" },
+  called:              { label: "Called",       color: "#fb923c" },
+  parked:              { label: "Parked",       color: "#64748b" },
+  validation_complete: { label: "Validated",    color: "#4ade80" },
+};
 
 // ── Local types ───────────────────────────────────────────────────────────────
 
@@ -224,11 +236,11 @@ function ScoreBand({ ts, onEdit }: { ts: ScoreBandDef; onEdit: (dim: string) => 
           {!isInsuff && (
             <button
               onClick={() => onEdit(ts.dimension)}
-              className="opacity-30 hover:opacity-90 transition-opacity text-xs ml-0.5"
+              className="opacity-50 hover:opacity-100 transition-opacity ml-1 rounded p-1"
               style={{ color: "var(--fiq-text)" }}
               title={`Override ${ts.dimension} score`}
             >
-              ✏
+              <Pencil size={14} />
             </button>
           )}
         </div>
@@ -295,12 +307,23 @@ function FieldRow({
   field,
   onSpanEnter,
   onSpanLeave,
+  onVerify,
+  onEdit,
 }: {
   field: FacilityField;
   onSpanEnter: (span: HTMLElement, id: string) => void;
   onSpanLeave: (id: string) => void;
+  onVerify: (label: string) => void;
+  onEdit: (label: string, currentValue: string) => void;
 }) {
   const isMissing = field.missing || field.value === null;
+  const [verified, setVerified] = useState(false);
+
+  function handleVerify() {
+    setVerified(true);
+    onVerify(field.label);
+    setTimeout(() => setVerified(false), 2000);
+  }
 
   return (
     <div
@@ -339,16 +362,22 @@ function FieldRow({
           </span>
           <div className="flex gap-1.5 mt-1.5">
             <button
+              onClick={handleVerify}
               className="text-[10px] font-semibold px-2 py-0.5 rounded border transition-colors hover:text-emerald-600 hover:border-emerald-300"
-              style={{ color: "var(--fiq-text-faintest)", borderColor: "var(--fiq-border)" }}
+              style={{
+                color: verified ? "#059669" : "var(--fiq-text-faintest)",
+                borderColor: verified ? "#a7f3d0" : "var(--fiq-border)",
+              }}
             >
-              ✓ Verify
+              {verified ? "✓ Verified" : "✓ Verify"}
             </button>
             <button
-              className="text-[10px] font-semibold px-2 py-0.5 rounded border transition-colors hover:text-indigo-600 hover:border-indigo-300"
+              onClick={() => onEdit(field.label, field.value!)}
+              className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded border transition-colors hover:text-indigo-600 hover:border-indigo-300"
               style={{ color: "var(--fiq-text-faintest)", borderColor: "var(--fiq-border)" }}
             >
-              ✏ Edit
+              <Pencil size={11} />
+              Edit
             </button>
           </div>
         </div>
@@ -364,11 +393,15 @@ function CategorySection({
   fields,
   onSpanEnter,
   onSpanLeave,
+  onVerify,
+  onEdit,
 }: {
   name: string;
   fields: FacilityField[];
   onSpanEnter: (span: HTMLElement, id: string) => void;
   onSpanLeave: (id: string) => void;
+  onVerify: (label: string) => void;
+  onEdit: (label: string, currentValue: string) => void;
 }) {
   if (fields.length === 0) return null;
   return (
@@ -380,9 +413,87 @@ function CategorySection({
         <div className="flex-1 h-px" style={{ background: "var(--fiq-border)" }} />
       </div>
       {fields.map((f) => (
-        <FieldRow key={f.label} field={f} onSpanEnter={onSpanEnter} onSpanLeave={onSpanLeave} />
+        <FieldRow
+          key={f.label}
+          field={f}
+          onSpanEnter={onSpanEnter}
+          onSpanLeave={onSpanLeave}
+          onVerify={onVerify}
+          onEdit={onEdit}
+        />
       ))}
     </div>
+  );
+}
+
+// ── EditFieldModal ────────────────────────────────────────────────────────────
+
+function EditFieldModal({
+  fieldLabel,
+  currentValue,
+  onSubmit,
+  onClose,
+}: {
+  fieldLabel: string;
+  currentValue: string;
+  onSubmit: (newValue: string, reason: string) => void;
+  onClose: () => void;
+}) {
+  const [newValue, setNewValue] = useState(currentValue);
+  const [reason, setReason] = useState("");
+  const valid = newValue.trim() !== currentValue.trim() && reason.trim().length > 0;
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center"
+      style={{ background: "rgba(0,0,0,0.5)" }}
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div
+        className="w-full max-w-sm mx-4 rounded-2xl p-6 shadow-2xl"
+        style={{ background: "var(--fiq-bg-surface)", border: "1px solid var(--fiq-border)" }}
+      >
+        <h3 className="font-semibold text-sm mb-1" style={{ color: "var(--fiq-text)" }}>
+          Edit Field
+        </h3>
+        <p className="text-[10px] font-semibold uppercase tracking-wide mb-4" style={{ color: "var(--fiq-text-faintest)" }}>
+          {fieldLabel}
+        </p>
+        <textarea
+          value={newValue}
+          onChange={(e) => setNewValue(e.target.value)}
+          rows={3}
+          className="w-full rounded-lg px-3 py-2 text-sm resize-none outline-none mb-3"
+          style={{ background: "var(--fiq-bg-input)", border: "1px solid var(--fiq-border-strong)", color: "var(--fiq-text)" }}
+        />
+        <textarea
+          value={reason}
+          onChange={(e) => setReason(e.target.value)}
+          placeholder="Reason for edit (required)"
+          rows={2}
+          className="w-full rounded-lg px-3 py-2 text-sm resize-none outline-none mb-4"
+          style={{ background: "var(--fiq-bg-input)", border: "1px solid var(--fiq-border-strong)", color: "var(--fiq-text)" }}
+        />
+        <div className="flex justify-end gap-2">
+          <button
+            onClick={onClose}
+            className="px-4 py-1.5 text-xs font-semibold rounded-lg border"
+            style={{ borderColor: "var(--fiq-border)", color: "var(--fiq-text-faintest)" }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={() => valid && onSubmit(newValue.trim(), reason.trim())}
+            disabled={!valid}
+            className="px-4 py-1.5 text-xs font-semibold rounded-lg disabled:opacity-40"
+            style={{ background: "var(--fiq-text)", color: "var(--fiq-bg)" }}
+          >
+            Submit Edit
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -537,6 +648,61 @@ function OverrideModal({
   );
 }
 
+// ── ParkedStatusModal ─────────────────────────────────────────────────────────
+
+function ParkedStatusModal({
+  onConfirm,
+  onCancel,
+}: {
+  onConfirm: (reason: string) => void;
+  onCancel: () => void;
+}) {
+  const [reason, setReason] = useState("");
+  return createPortal(
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center"
+      style={{ background: "rgba(0,0,0,0.5)" }}
+      onClick={(e) => { if (e.target === e.currentTarget) onCancel(); }}
+    >
+      <div
+        className="w-full max-w-sm mx-4 rounded-2xl p-6 shadow-2xl"
+        style={{ background: "var(--fiq-bg-surface)", border: "1px solid var(--fiq-border)" }}
+      >
+        <h3 className="font-semibold text-sm mb-1" style={{ color: "var(--fiq-text)" }}>Park for Later</h3>
+        <p className="text-xs mb-4" style={{ color: "var(--fiq-text-faintest)" }}>
+          Provide a reason — visible on the Kanban board.
+        </p>
+        <textarea
+          value={reason}
+          onChange={(e) => setReason(e.target.value)}
+          placeholder="Reason for parking (required)"
+          rows={3}
+          className="w-full rounded-lg px-3 py-2 text-sm resize-none outline-none mb-4"
+          style={{ background: "var(--fiq-bg-input)", border: "1px solid var(--fiq-border-strong)", color: "var(--fiq-text)" }}
+        />
+        <div className="flex justify-end gap-2">
+          <button
+            onClick={onCancel}
+            className="px-4 py-1.5 text-xs font-semibold rounded-lg border"
+            style={{ borderColor: "var(--fiq-border)", color: "var(--fiq-text-faintest)" }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={() => reason.trim() && onConfirm(reason.trim())}
+            disabled={!reason.trim()}
+            className="px-4 py-1.5 text-xs font-semibold rounded-lg disabled:opacity-40"
+            style={{ background: "var(--fiq-text)", color: "var(--fiq-bg)" }}
+          >
+            Park
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
 // ── GuidedAnalysis (main export) ──────────────────────────────────────────────
 
 interface Props {
@@ -548,7 +714,36 @@ export default function GuidedAnalysis({ detail, analystId }: Props) {
   const { facility, trust_signals } = detail;
   const [showAll, setShowAll] = useState(false);
   const [flagOpen, setFlagOpen] = useState(false);
+  const [flagHover, setFlagHover] = useState(false);
   const [overrideDim, setOverrideDim] = useState<string | null>(null);
+  const [editingField, setEditingField] = useState<{ label: string; value: string } | null>(null);
+
+  const [reviewStatus, setReviewStatus] = useState<ReviewStatus>("not_started");
+  const [_reviewParkedReason, setReviewParkedReason] = useState<string | null>(null);
+  const [statusMenuOpen, setStatusMenuOpen] = useState(false);
+  const [parkingFromStatus, setParkingFromStatus] = useState(false);
+
+  useEffect(() => {
+    fetchReviewStatus(facility.facility_id).then((r) => {
+      setReviewStatus(r.status);
+      setReviewParkedReason(r.parked_reason);
+    });
+  }, [facility.facility_id]);
+
+  async function handleStatusChange(toStatus: ReviewStatus) {
+    setStatusMenuOpen(false);
+    if (toStatus === "parked") { setParkingFromStatus(true); return; }
+    setReviewStatus(toStatus);
+    setReviewParkedReason(null);
+    await postReviewStatus(facility.facility_id, toStatus);
+  }
+
+  async function confirmParkedStatus(reason: string) {
+    setParkingFromStatus(false);
+    setReviewStatus("parked");
+    setReviewParkedReason(reason);
+    await postReviewStatus(facility.facility_id, "parked", reason);
+  }
 
   const containerRef = useRef<HTMLDivElement>(null);
   const bubbleRefs = useRef<Map<string, HTMLDivElement>>(new Map());
@@ -700,11 +895,48 @@ export default function GuidedAnalysis({ detail, analystId }: Props) {
             </div>
             <button
               onClick={() => setFlagOpen(true)}
+              onMouseEnter={() => setFlagHover(true)}
+              onMouseLeave={() => setFlagHover(false)}
               className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full border transition-colors"
-              style={{ color: "var(--fiq-trust-low)", borderColor: "var(--fiq-trust-low)", background: "rgba(220,38,38,0.08)" }}
+              style={{
+                color: "var(--fiq-trust-low)",
+                borderColor: "var(--fiq-trust-low)",
+                background: flagHover ? "rgba(220,38,38,0.16)" : "rgba(220,38,38,0.08)",
+              }}
             >
               ⚑ Flag for Review
             </button>
+            <div className="relative mt-2">
+              <button
+                onClick={() => setStatusMenuOpen((o) => !o)}
+                className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full border transition-colors"
+                style={{
+                  color: REVIEW_STATUS_CONFIG[reviewStatus].color,
+                  borderColor: REVIEW_STATUS_CONFIG[reviewStatus].color,
+                  background: `${REVIEW_STATUS_CONFIG[reviewStatus].color}14`,
+                }}
+              >
+                ● {REVIEW_STATUS_CONFIG[reviewStatus].label}
+              </button>
+              {statusMenuOpen && (
+                <div
+                  className="absolute right-0 top-full mt-1 rounded-xl overflow-hidden z-30 shadow-xl"
+                  style={{ minWidth: 160, background: "var(--fiq-bg-surface)", border: "1px solid var(--fiq-border)" }}
+                >
+                  {(Object.keys(REVIEW_STATUS_CONFIG) as ReviewStatus[]).map((s) => (
+                    <button
+                      key={s}
+                      onClick={() => handleStatusChange(s)}
+                      className="w-full text-left flex items-center gap-2 px-3 py-2 text-[11px] transition-opacity hover:opacity-70"
+                      style={{ color: s === reviewStatus ? REVIEW_STATUS_CONFIG[s].color : "var(--fiq-text-muted)", fontWeight: s === reviewStatus ? 700 : 400 }}
+                    >
+                      <span style={{ color: REVIEW_STATUS_CONFIG[s].color }}>●</span>
+                      {REVIEW_STATUS_CONFIG[s].label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
@@ -753,6 +985,10 @@ export default function GuidedAnalysis({ detail, analystId }: Props) {
               fields={grouped.get(cat) ?? []}
               onSpanEnter={handleSpanEnter}
               onSpanLeave={handleSpanLeave}
+              onVerify={(label) =>
+                postAction(facility.facility_id, analystId, "note", `Verified: ${label}`)
+              }
+              onEdit={(label, value) => setEditingField({ label, value })}
             />
           ))}
         </div>
@@ -763,6 +999,23 @@ export default function GuidedAnalysis({ detail, analystId }: Props) {
 
       {flagOpen && (
         <FlagModal facilityId={facility.facility_id} analystId={analystId} onClose={() => setFlagOpen(false)} />
+      )}
+      {editingField && (
+        <EditFieldModal
+          fieldLabel={editingField.label}
+          currentValue={editingField.value}
+          onSubmit={(newValue, reason) => {
+            postAction(facility.facility_id, analystId, "note", `Edit ${editingField.label}: "${newValue}" — ${reason}`);
+            setEditingField(null);
+          }}
+          onClose={() => setEditingField(null)}
+        />
+      )}
+      {parkingFromStatus && (
+        <ParkedStatusModal
+          onConfirm={confirmParkedStatus}
+          onCancel={() => setParkingFromStatus(false)}
+        />
       )}
       {overrideDim && (
         <OverrideModal
