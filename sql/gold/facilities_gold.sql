@@ -14,7 +14,7 @@ WITH latest_overrides AS (
     SELECT
       facility_id, field_name, new_value,
       ROW_NUMBER() OVER (PARTITION BY facility_id, field_name ORDER BY updated_at DESC) AS rn
-    FROM facilityiq-lakebase.facilityiq.facilities_overrides
+    FROM facilityiq-lakebase.public.facilities_overrides
   )
   WHERE rn = 1
 ),

@@ -2,12 +2,11 @@
 -- Append-only audit trail: one row per correction. Gold applies the LATEST override
 -- per (facility_id, field_name) by updated_at. NEVER truncate or delete from this table.
 --
--- This table lives in Lakebase Postgres (facilityiq-lakebase.facilityiq.facilities_overrides),
--- NOT in Unity Catalog Delta. It is created by the app SP in server.ts onPluginsReady
--- so the app can write to it directly via appkit.lakebase.query().
+-- This table lives in Lakebase Postgres (facilityiq-lakebase.public.facilities_overrides),
+-- in the same public schema as the synced facility tables.
+-- Created by the app SP in server.ts onPluginsReady via appkit.lakebase.query().
 --
--- Spark reads it in facilities_gold.sql as: facilityiq-lakebase.facilityiq.facilities_overrides
--- (works because facilityiq-lakebase is a registered UC catalog exposing the full Postgres DB).
+-- Spark reads it in facilities_gold.sql as: facilityiq-lakebase.public.facilities_overrides
 --
 -- To add a new overridable field: add a route in server.ts that INSERTs a row with the
 -- field_name matching the column name in facilities_gold.

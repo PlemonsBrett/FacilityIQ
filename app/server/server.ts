@@ -7,11 +7,10 @@ createApp({
     server(),
   ],
   async onPluginsReady(appkit) {
-    // Schema and table init — SP owns facilityiq schema because we deployed first
+    // Table init in the public schema — same schema as synced facility tables
     try {
       await appkit.lakebase.query(`
-        CREATE SCHEMA IF NOT EXISTS facilityiq;
-        CREATE TABLE IF NOT EXISTS facilityiq.facilities_overrides (
+        CREATE TABLE IF NOT EXISTS public.facilities_overrides (
           facility_id  TEXT        NOT NULL,
           field_name   TEXT        NOT NULL,
           new_value    TEXT,
@@ -20,9 +19,9 @@ createApp({
           updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
         );
         CREATE INDEX IF NOT EXISTS idx_fo_facility_field
-          ON facilityiq.facilities_overrides (facility_id, field_name, updated_at DESC);
+          ON public.facilities_overrides (facility_id, field_name, updated_at DESC);
 
-        CREATE TABLE IF NOT EXISTS facilityiq.user_actions (
+        CREATE TABLE IF NOT EXISTS public.user_actions (
           action_id     TEXT PRIMARY KEY,
           facility_id   TEXT NOT NULL,
           analyst_id    TEXT NOT NULL,
@@ -34,9 +33,9 @@ createApp({
           updated_at    TIMESTAMPTZ DEFAULT NOW()
         );
         CREATE INDEX IF NOT EXISTS idx_ua_facility_analyst
-          ON facilityiq.user_actions (facility_id, analyst_id, action_type, updated_at DESC);
+          ON public.user_actions (facility_id, analyst_id, action_type, updated_at DESC);
 
-        CREATE TABLE IF NOT EXISTS facilityiq.facility_review (
+        CREATE TABLE IF NOT EXISTS public.facility_review (
           facility_id   TEXT PRIMARY KEY,
           status        TEXT NOT NULL DEFAULT 'not_started'
                         CHECK (status IN ('not_started','in_progress','email_sent',
@@ -50,9 +49,9 @@ createApp({
             CHECK (status <> 'parked' OR parked_reason IS NOT NULL)
         );
         CREATE INDEX IF NOT EXISTS idx_fr_status
-          ON facilityiq.facility_review (status, updated_at DESC);
+          ON public.facility_review (status, updated_at DESC);
       `);
-      console.log('[facilityiq] Schema, user_actions, and facility_review tables ready');
+      console.log('[facilityiq] Tables ready in public schema');
     } catch (err) {
       console.warn('[facilityiq] Schema init failed:', (err as Error).message);
       console.warn('[facilityiq] Routes will be registered but writes may fail until schema is ready');
@@ -246,7 +245,7 @@ createApp({
             SELECT DISTINCT ON (action_type, COALESCE(dimension, ''))
               action_id, facility_id, analyst_id, action_type,
               dimension, content, override_score, updated_at
-            FROM facilityiq.user_actions
+            FROM public.user_actions
             WHERE facility_id = $1 AND analyst_id = $2
             ORDER BY action_type, COALESCE(dimension, ''), updated_at DESC
           `, [id, analyst_id]);
@@ -276,7 +275,7 @@ createApp({
           const { analyst_id, action_type, dimension, content, override_score } = parsed.data;
           const action_id = crypto.randomUUID();
           const { rows } = await appkit.lakebase.query(`
-            INSERT INTO facilityiq.user_actions
+            INSERT INTO public.user_actions
               (action_id, facility_id, analyst_id, action_type, dimension, content, override_score)
             VALUES ($1, $2, $3, $4, $5, $6, $7)
             RETURNING *
@@ -297,7 +296,7 @@ createApp({
                    'not_started' AS status
             FROM public.facilities f
             WHERE NOT EXISTS (
-              SELECT 1 FROM facilityiq.facility_review r
+              SELECT 1 FROM public.facility_review r
               WHERE r.facility_id = f.facility_id
             )
             ORDER BY f.facility_name
@@ -326,7 +325,7 @@ createApp({
             SELECT r.facility_id, f.facility_name, f.facility_type, f.state,
                    r.status, r.parked_reason, r.assigned_to, r.notes,
                    r.updated_by, r.updated_at
-            FROM facilityiq.facility_review r
+            FROM public.facility_review r
             LEFT JOIN public.facilities f ON f.facility_id = r.facility_id
             ${where}
             ORDER BY r.updated_at DESC
@@ -344,7 +343,7 @@ createApp({
         try {
           const { facilityId } = req.params;
           const { rows } = await appkit.lakebase.query(
-            `SELECT * FROM facilityiq.facility_review WHERE facility_id = $1`, [facilityId]);
+            `SELECT * FROM public.facility_review WHERE facility_id = $1`, [facilityId]);
           res.json(rows[0] ?? { facility_id: facilityId, status: 'not_started' });
         } catch (err) {
           console.error('Failed to fetch review:', err);
@@ -374,7 +373,7 @@ createApp({
           }
           const { status, parked_reason, assigned_to, notes, updated_by } = parsed.data;
           const { rows } = await appkit.lakebase.query(`
-            INSERT INTO facilityiq.facility_review
+            INSERT INTO public.facility_review
               (facility_id, status, parked_reason, assigned_to, notes, updated_by, updated_at)
             VALUES ($1, $2, $3, $4, $5, $6, NOW())
             ON CONFLICT (facility_id) DO UPDATE SET
