@@ -988,9 +988,9 @@ createApp({
             specialties: bronzeRaw.specialties,
           };
 
-          const messages = [
+          const messages: { role: 'user' | 'assistant'; content: string }[] = [
             {
-              role: 'system',
+              role: 'user',
               content: `You are a healthcare facility data cleaning assistant.
 
 RULES:
@@ -998,9 +998,10 @@ RULES:
 - Suggest conservative field-level edits only when the bronze/raw row clearly supports them.
 - Do not fabricate missing contact information, addresses, capacity, year, or clinical claims.
 - Keep suggestions concise and analyst-readable.
-- Do not suggest values that are identical to the current value.`,
+- Do not suggest values that are identical to the current value.
+
+${buildCleanupPrompt(current, bronze)}`,
             },
-            { role: 'user', content: buildCleanupPrompt(current, bronze) },
           ];
 
           async function invokeCleanupModel(alias: 'llm' | 'fallback', model: string) {
