@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
+import { Pencil } from "lucide-react";
 import type { FacilityDetail, ReviewStatus } from "../types";
 import { overallScore, scoreToInt, trustColor, trustLabel } from "../types";
 import Workbench from "./Workbench";
@@ -235,11 +236,11 @@ function ScoreBand({ ts, onEdit }: { ts: ScoreBandDef; onEdit: (dim: string) => 
           {!isInsuff && (
             <button
               onClick={() => onEdit(ts.dimension)}
-              className="opacity-50 hover:opacity-100 transition-opacity ml-1 rounded px-1 py-0.5"
-              style={{ color: "var(--fiq-text)", fontSize: 14, lineHeight: 1 }}
+              className="opacity-50 hover:opacity-100 transition-opacity ml-1 rounded p-1"
+              style={{ color: "var(--fiq-text)" }}
               title={`Override ${ts.dimension} score`}
             >
-              ✏
+              <Pencil size={14} />
             </button>
           )}
         </div>
@@ -372,10 +373,11 @@ function FieldRow({
             </button>
             <button
               onClick={() => onEdit(field.label, field.value!)}
-              className="text-[10px] font-semibold px-2 py-0.5 rounded border transition-colors hover:text-indigo-600 hover:border-indigo-300"
+              className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded border transition-colors hover:text-indigo-600 hover:border-indigo-300"
               style={{ color: "var(--fiq-text-faintest)", borderColor: "var(--fiq-border)" }}
             >
-              ✏ Edit
+              <Pencil size={11} />
+              Edit
             </button>
           </div>
         </div>
