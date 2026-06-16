@@ -9,9 +9,16 @@ createApp({
   async onPluginsReady(appkit) {
     // Table init in public schema — same schema as synced facility tables.
     // No CREATE SCHEMA needed; public already exists in Lakebase.
+    // Drop and recreate app-owned tables so the runtime SP always owns them.
+    // Prevents "permission denied" when a prior deploy created them under a different identity.
+    // Safe to do on every startup — these tables hold only transient analyst state.
     try {
       await appkit.lakebase.query(`
-        CREATE TABLE IF NOT EXISTS public.facilities_overrides (
+        DROP TABLE IF EXISTS public.user_actions CASCADE;
+        DROP TABLE IF EXISTS public.facility_review CASCADE;
+        DROP TABLE IF EXISTS public.facilities_overrides CASCADE;
+
+        CREATE TABLE public.facilities_overrides (
           facility_id  TEXT        NOT NULL,
           field_name   TEXT        NOT NULL,
           new_value    TEXT,
@@ -19,10 +26,10 @@ createApp({
           reason       TEXT,
           updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
         );
-        CREATE INDEX IF NOT EXISTS idx_fo_facility_field
+        CREATE INDEX idx_fo_facility_field
           ON public.facilities_overrides (facility_id, field_name, updated_at DESC);
 
-        CREATE TABLE IF NOT EXISTS public.user_actions (
+        CREATE TABLE public.user_actions (
           action_id     TEXT PRIMARY KEY,
           facility_id   TEXT NOT NULL,
           analyst_id    TEXT NOT NULL,
@@ -33,10 +40,10 @@ createApp({
           created_at    TIMESTAMPTZ DEFAULT NOW(),
           updated_at    TIMESTAMPTZ DEFAULT NOW()
         );
-        CREATE INDEX IF NOT EXISTS idx_ua_facility_analyst
+        CREATE INDEX idx_ua_facility_analyst
           ON public.user_actions (facility_id, analyst_id, action_type, updated_at DESC);
 
-        CREATE TABLE IF NOT EXISTS public.facility_review (
+        CREATE TABLE public.facility_review (
           facility_id   TEXT PRIMARY KEY,
           status        TEXT NOT NULL DEFAULT 'not_started'
                         CHECK (status IN ('not_started','in_progress','email_sent',
@@ -49,7 +56,7 @@ createApp({
           CONSTRAINT parked_requires_reason
             CHECK (status <> 'parked' OR parked_reason IS NOT NULL)
         );
-        CREATE INDEX IF NOT EXISTS idx_fr_status
+        CREATE INDEX idx_fr_status
           ON public.facility_review (status, updated_at DESC);
       `);
       console.log('[facilityiq] Tables ready in public schema');
