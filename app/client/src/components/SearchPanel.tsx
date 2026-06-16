@@ -93,15 +93,16 @@ export default function SearchPanel({ onSelect, selectedId, onFirstFacilityId }:
         padding: "6px 12px", borderBottom: "1px solid var(--fiq-border)",
         display: "flex", gap: 5, flexWrap: "wrap", flexShrink: 0,
       }}>
-        <select value={state} onChange={(e) => setState(e.target.value)} style={selectStyle}>
+        <select data-tour="state-filter" value={state} onChange={(e) => setState(e.target.value)} style={selectStyle}>
           <option value="">All States</option>
           {meta.states.map((s) => <option key={s} value={s}>{s}</option>)}
         </select>
-        <select value={facilityType} onChange={(e) => setFacilityType(e.target.value)} style={selectStyle}>
+        <select data-tour="type-filter" value={facilityType} onChange={(e) => setFacilityType(e.target.value)} style={selectStyle}>
           <option value="">All Types</option>
           {meta.facility_types.map((t) => <option key={t} value={t}>{t}</option>)}
         </select>
         <button
+          data-tour="contradiction-filter"
           onClick={() => setContradictionsOnly((c) => !c)}
           style={{
             background: contradictionsOnly ? "rgba(255,54,33,0.2)" : "var(--fiq-bg-input)",

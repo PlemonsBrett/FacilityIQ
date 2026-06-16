@@ -165,6 +165,7 @@ function KanbanColumn({
   cards,
   onMove,
   onNavigate,
+  dataTour,
 }: {
   status: ReviewStatus;
   label: string;
@@ -172,11 +173,13 @@ function KanbanColumn({
   cards: ReviewCard[];
   onMove: (card: ReviewCard, to: ReviewStatus) => void;
   onNavigate: (id: string) => void;
+  dataTour?: string;
 }) {
   const { isOver, setNodeRef } = useDroppable({ id: status });
 
   return (
     <div
+      data-tour={dataTour}
       className="flex flex-col flex-shrink-0 rounded-xl overflow-hidden"
       style={{
         width: 260,
@@ -378,6 +381,7 @@ export default function KanbanPage({ onNavigateToFacility }: Props) {
                 cards={columns[col.status] ?? []}
                 onMove={handleMove}
                 onNavigate={onNavigateToFacility}
+                dataTour={col.status === "not_started" ? "kanban-not-started" : undefined}
               />
             ))}
           </div>

@@ -114,8 +114,6 @@ export default function App({ splashDone }: Props) {
           buttons: ["close", "primary", "skip"],
           showProgress: true,
           skipBeacon: true,
-          skipScroll: true,
-          blockTargetInteraction: true,
           primaryColor: "#5FD3E3",
           backgroundColor: "var(--fiq-bg-surface)",
           textColor: "var(--fiq-text)",

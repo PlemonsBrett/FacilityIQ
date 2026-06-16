@@ -9,9 +9,10 @@ import { initTheme } from './lib/theme.ts';
 initTheme();
 
 function Root() {
-  const splashEnabled = new URLSearchParams(window.location.search).get('splash') === 'on';
-  const [showSplash, setShowSplash] = useState(() => splashEnabled);
-  const [splashDone, setSplashDone] = useState(() => !splashEnabled);
+  // Show splash whenever fiq_tour_seen is absent — no URL param needed.
+  // Hidden reset button clears localStorage so next load replays the full experience.
+  const [showSplash, setShowSplash] = useState(() => !localStorage.getItem("fiq_tour_seen"));
+  const [splashDone, setSplashDone] = useState(() => !!localStorage.getItem("fiq_tour_seen"));
 
   function handleSplashComplete() {
     setShowSplash(false);

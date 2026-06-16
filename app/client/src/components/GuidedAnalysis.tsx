@@ -941,7 +941,7 @@ export default function GuidedAnalysis({ detail, analystId }: Props) {
         </div>
 
         {/* Trust dimensions */}
-        <div>
+        <div data-tour="trust-dimensions">
           <p className="text-[10px] font-bold uppercase tracking-widest mb-3" style={{ color: "var(--fiq-text-faintest)" }}>
             Trust Dimensions
           </p>
