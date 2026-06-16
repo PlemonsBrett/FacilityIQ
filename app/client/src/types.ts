@@ -41,6 +41,7 @@ export interface FacilityDetail {
     official_website: string | null;
     address_line1: string | null;
     overridden_fields: string[];
+    overall_trust_score?: string | null;
   };
   trust_signals: TrustSignal[];
 }

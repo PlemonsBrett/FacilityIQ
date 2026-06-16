@@ -770,7 +770,10 @@ export default function GuidedAnalysis({ detail, analystId }: Props) {
     }),
   [trust_signals]);
 
-  const overall = useMemo(() => overallScore(trust_signals), [trust_signals]);
+  const overall = useMemo(
+    () => scoreToInt(facility.overall_trust_score ?? null) ?? overallScore(trust_signals),
+    [facility.overall_trust_score, trust_signals],
+  );
 
   const grouped = useMemo(() => {
     const map = new Map<string, FacilityField[]>([

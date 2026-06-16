@@ -1,6 +1,26 @@
 import { createApp, lakebase, server } from '@databricks/appkit';
 import { z } from 'zod';
 
+const adjustedTrustScoreSql = `
+  CASE
+    WHEN COUNT(t.trust_score) = 0 THEN NULL
+    ELSE GREATEST(0, LEAST(1,
+      AVG(t.trust_score)
+      - (GREATEST(0, 3 - COUNT(t.trust_score)) * 0.10)
+      - ((
+          CASE WHEN MAX(f.official_phone) IS NULL THEN 1 ELSE 0 END +
+          CASE WHEN MAX(f.email) IS NULL THEN 1 ELSE 0 END +
+          CASE WHEN MAX(f.official_website) IS NULL THEN 1 ELSE 0 END +
+          CASE WHEN MAX(f.year_established) IS NULL THEN 1 ELSE 0 END +
+          CASE WHEN MAX(f.capacity) IS NULL THEN 1 ELSE 0 END +
+          CASE WHEN MAX(f.number_doctors) IS NULL THEN 1 ELSE 0 END +
+          CASE WHEN MAX(f.description) IS NULL THEN 1 ELSE 0 END
+        ) * 0.03)
+      - ((100 - COALESCE(q.quality_score, 100)) / 400.0)
+    ))
+  END
+`;
+
 createApp({
   plugins: [
     lakebase(),
@@ -88,10 +108,11 @@ createApp({
                 COUNT(CASE WHEN avg_score IS NULL  THEN 1 END)::int AS insuff_count,
                 COUNT(*)::int AS total
               FROM (
-                SELECT facility_id, AVG(trust_score) AS avg_score
-                FROM public.facilities_trust_signals
-                WHERE trust_score IS NOT NULL
-                GROUP BY facility_id
+                SELECT f.unique_id AS facility_id, ${adjustedTrustScoreSql} AS avg_score
+                FROM public.facilities f
+                LEFT JOIN public.facilities_trust_signals t ON f.unique_id = t.facility_id
+                LEFT JOIN public.facilities_quality_scores q ON q.facility_id = f.unique_id
+                GROUP BY f.unique_id, q.quality_score
               ) x
             `),
             appkit.lakebase.query(`
@@ -176,19 +197,20 @@ createApp({
               f.name                               AS facility_name,
               f.address_state_or_region            AS state,
               f.facility_type_id                   AS facility_type,
-              AVG(t.trust_score)::real             AS overall_trust_score,
+              ${adjustedTrustScoreSql}::real        AS overall_trust_score,
               MAX(CASE WHEN t.contradiction THEN 1 ELSE 0 END)::int AS has_contradiction,
               COUNT(t.dimension)::int              AS signal_count
             FROM public.facilities f
             LEFT JOIN public.facilities_trust_signals t ON f.unique_id = t.facility_id
+            LEFT JOIN public.facilities_quality_scores q ON q.facility_id = f.unique_id
             WHERE ($1::text IS NULL OR
               f.name ILIKE $1 OR
               f.description ILIKE $1 OR
               f.address_state_or_region ILIKE $1)
               AND ($2::text = '' OR f.address_state_or_region = $2)
               AND ($3::text = '' OR f.facility_type_id = $3)
-            GROUP BY f.unique_id, f.name, f.address_state_or_region, f.facility_type_id
-            HAVING ($4 = 0 OR COALESCE(AVG(t.trust_score), 0) >= $4)
+            GROUP BY f.unique_id, f.name, f.address_state_or_region, f.facility_type_id, q.quality_score
+            HAVING ($4 = 0 OR COALESCE(${adjustedTrustScoreSql}, 0) >= $4)
                AND ($5 = false OR MAX(CASE WHEN t.contradiction THEN 1 ELSE 0 END) = 1)
             ORDER BY overall_trust_score DESC NULLS LAST
             LIMIT $6 OFFSET $7
@@ -208,21 +230,41 @@ createApp({
           const [fr, sr] = await Promise.all([
             appkit.lakebase.query(
               `SELECT
-                      unique_id                    AS facility_id,
-                      name                         AS facility_name,
-                      facility_type_id             AS facility_type,
-                      address_state_or_region      AS state,
-                      address_city                 AS district,
-                      description,
-                      capacity,
-                      year_established,
-                      number_doctors,
-                      official_phone,
-                      email,
-                      official_website,
-                      address_line1,
-                      overridden_fields
-               FROM public.facilities WHERE unique_id = $1`, [id]),
+                      f.unique_id                  AS facility_id,
+                      f.name                       AS facility_name,
+                      f.facility_type_id           AS facility_type,
+                      f.address_state_or_region    AS state,
+                      f.address_city               AS district,
+                      f.description,
+                      f.capacity,
+                      f.year_established,
+                      f.number_doctors,
+                      f.official_phone,
+                      f.email,
+                      f.official_website,
+                      f.address_line1,
+                      f.overridden_fields,
+                      ${adjustedTrustScoreSql}::real AS overall_trust_score
+               FROM public.facilities f
+               LEFT JOIN public.facilities_trust_signals t ON f.unique_id = t.facility_id
+               LEFT JOIN public.facilities_quality_scores q ON q.facility_id = f.unique_id
+               WHERE f.unique_id = $1
+               GROUP BY
+                      f.unique_id,
+                      f.name,
+                      f.facility_type_id,
+                      f.address_state_or_region,
+                      f.address_city,
+                      f.description,
+                      f.capacity,
+                      f.year_established,
+                      f.number_doctors,
+                      f.official_phone,
+                      f.email,
+                      f.official_website,
+                      f.address_line1,
+                      f.overridden_fields,
+                      q.quality_score`, [id]),
             appkit.lakebase.query(
               `SELECT * FROM public.facilities_trust_signals
                WHERE facility_id = $1 ORDER BY dimension`, [id]),
