@@ -9,15 +9,19 @@ import { initTheme } from './lib/theme.ts';
 initTheme();
 
 function Root() {
-  // Demo-only splash, opt-in via ?splash=on (off by default).
-  const [showSplash, setShowSplash] = useState(
-    () => new URLSearchParams(window.location.search).get('splash') === 'on'
-  );
+  const splashEnabled = new URLSearchParams(window.location.search).get('splash') === 'on';
+  const [showSplash, setShowSplash] = useState(() => splashEnabled);
+  const [splashDone, setSplashDone] = useState(() => !splashEnabled);
+
+  function handleSplashComplete() {
+    setShowSplash(false);
+    setSplashDone(true);
+  }
 
   return (
     <>
-      <App />
-      {showSplash && <SplashScreen onComplete={() => setShowSplash(false)} />}
+      <App splashDone={splashDone} />
+      {showSplash && <SplashScreen onComplete={handleSplashComplete} />}
     </>
   );
 }
