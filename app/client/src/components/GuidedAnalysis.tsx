@@ -56,13 +56,24 @@ interface ScoreBandDef {
 
 function normalizeArrayField(raw: string | string[] | null | undefined): { text: string | null; items: string[] | undefined } {
   if (raw === null || raw === undefined) return { text: null, items: undefined };
+
+  let arr: string[] | null = null;
   if (Array.isArray(raw)) {
-    const items = raw.map((s) => String(s)).filter(Boolean);
-    return items.length === 0
-      ? { text: null, items: undefined }
-      : { text: items.join(", "), items: items.length > 1 ? items : undefined };
+    arr = raw.map((s) => String(s)).filter(Boolean);
+  } else if (typeof raw === "string" && raw.trimStart().startsWith("[")) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) arr = parsed.map((s) => String(s)).filter(Boolean);
+    } catch { /* fall through to plain string */ }
   }
-  return { text: raw || null, items: undefined };
+
+  if (arr !== null) {
+    return arr.length === 0
+      ? { text: null, items: undefined }
+      : { text: arr.join(", "), items: arr.length > 1 ? arr : undefined };
+  }
+
+  return { text: (raw as string) || null, items: undefined };
 }
 
 function segmentText(text: string, highlights: TextHighlight[]): Segment[] {
@@ -384,17 +395,14 @@ function FieldRow({
       ) : (
         <div className="flex-1">
           {field.valueItems ? (
-            <div className="flex flex-wrap gap-1.5 mb-1.5">
+            <ul className="mb-1.5 flex flex-col gap-0.5">
               {field.valueItems.map((item, i) => (
-                <span
-                  key={i}
-                  className="text-xs px-2 py-0.5 rounded-full"
-                  style={{ background: "var(--fiq-bg-input)", color: "var(--fiq-text-muted)", border: "1px solid var(--fiq-border)" }}
-                >
+                <li key={i} className="flex items-start gap-1.5 text-sm" style={{ color: "var(--fiq-text-muted)" }}>
+                  <span className="mt-1.5 shrink-0 w-1 h-1 rounded-full" style={{ background: "var(--fiq-text-faintest)" }} />
                   {item}
-                </span>
+                </li>
               ))}
-            </div>
+            </ul>
           ) : (
             <span className="text-sm leading-relaxed" style={{ color: "var(--fiq-text-muted)" }}>
               {field.highlights?.length ? (
