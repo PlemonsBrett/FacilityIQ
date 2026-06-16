@@ -8,7 +8,7 @@ import DashboardPage from "./pages/DashboardPage";
 import KanbanPage from "./pages/KanbanPage";
 import { ANALYST_ID } from "./lib/analyst";
 import { fetchFacilityDetail } from "./lib/api";
-import { TOUR_STEPS } from "./lib/tour";
+import { buildTourSteps, TOUR_STEPS, type DashboardStats } from "./lib/tour";
 
 export type View = "desk" | "dashboard" | "board";
 export { ANALYST_ID };
@@ -30,14 +30,24 @@ export default function App({ splashDone }: Props) {
   const [tourStepIndex, setTourStepIndex] = useState(0);
   const firstFacilityIdRef = useRef<string | null>(null);
   const tourWaitingForFacility = useRef(false);
+  const [dashStats, setDashStats] = useState<DashboardStats | null>(null);
+  const [statsLoaded, setStatsLoaded] = useState(false);
 
-  // Auto-start after splash
+  // Fetch dashboard stats for dynamic tour copy; fail gracefully so tour still works
   useEffect(() => {
-    if (!splashDone) return;
+    fetch("/api/dashboard/stats")
+      .then((r) => r.json())
+      .then((data: DashboardStats) => { setDashStats(data); setStatsLoaded(true); })
+      .catch(() => setStatsLoaded(true));
+  }, []);
+
+  // Auto-start after splash AND once stats are resolved (or failed)
+  useEffect(() => {
+    if (!splashDone || !statsLoaded) return;
     if (!localStorage.getItem(TOUR_KEY)) {
       setTourRun(true);
     }
-  }, [splashDone]);
+  }, [splashDone, statsLoaded]);
 
   // Advance tour step once facility detail loads (for selectFirst steps)
   useEffect(() => {
@@ -105,7 +115,7 @@ export default function App({ splashDone }: Props) {
       fontFamily: "system-ui, -apple-system, 'Segoe UI', sans-serif",
     }}>
       <Joyride
-        steps={TOUR_STEPS}
+        steps={buildTourSteps(dashStats)}
         run={tourRun}
         stepIndex={tourStepIndex}
         onEvent={handleTourCallback}
