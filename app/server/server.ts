@@ -60,6 +60,73 @@ createApp({
 
     appkit.server.extend((app) => {
 
+      // GET /api/dashboard/stats — summary metrics for tour dynamic copy
+      app.get('/api/dashboard/stats', async (_req, res) => {
+        try {
+          const [totals, tiers, dims, contraByType] = await Promise.all([
+            appkit.lakebase.query(`
+              SELECT
+                COUNT(DISTINCT f.unique_id)::int AS total_facilities,
+                COUNT(DISTINCT CASE WHEN t.contradiction THEN f.unique_id END)::int AS contradiction_count
+              FROM public.facilities f
+              LEFT JOIN public.trust_signals t ON f.unique_id = t.facility_id
+            `),
+            appkit.lakebase.query(`
+              SELECT
+                COUNT(CASE WHEN avg_score >= 0.7  THEN 1 END)::int AS high_count,
+                COUNT(CASE WHEN avg_score >= 0.4 AND avg_score < 0.7 THEN 1 END)::int AS med_count,
+                COUNT(CASE WHEN avg_score < 0.4   THEN 1 END)::int AS low_count,
+                COUNT(CASE WHEN avg_score IS NULL  THEN 1 END)::int AS insuff_count,
+                COUNT(*)::int AS total
+              FROM (
+                SELECT facility_id, AVG(trust_score) AS avg_score
+                FROM public.trust_signals
+                WHERE trust_score IS NOT NULL
+                GROUP BY facility_id
+              ) x
+            `),
+            appkit.lakebase.query(`
+              SELECT dimension, ROUND(AVG(trust_score)::numeric * 100, 1)::real AS avg_score
+              FROM public.trust_signals
+              WHERE trust_score IS NOT NULL
+              GROUP BY dimension
+              ORDER BY avg_score DESC
+            `),
+            appkit.lakebase.query(`
+              SELECT f.facility_type_id AS facility_type,
+                COUNT(DISTINCT f.unique_id)::int AS total,
+                COUNT(DISTINCT CASE WHEN t.contradiction THEN f.unique_id END)::int AS contradictions
+              FROM public.facilities f
+              LEFT JOIN public.trust_signals t ON f.unique_id = t.facility_id
+              WHERE f.facility_type_id IS NOT NULL
+              GROUP BY f.facility_type_id
+              HAVING COUNT(DISTINCT f.unique_id) > 2
+              ORDER BY (COUNT(DISTINCT CASE WHEN t.contradiction THEN f.unique_id END)::float
+                        / NULLIF(COUNT(DISTINCT f.unique_id), 0)) DESC
+              LIMIT 1
+            `),
+          ]);
+
+          const tierRow = tiers.rows[0] ?? {};
+          const total = (tierRow.total as number) || 1;
+
+          res.json({
+            total_facilities: (totals.rows[0]?.total_facilities as number) ?? 0,
+            contradiction_count: (totals.rows[0]?.contradiction_count as number) ?? 0,
+            high_trust_pct: Math.round(((tierRow.high_count as number ?? 0) / total) * 100),
+            med_trust_pct: Math.round(((tierRow.med_count as number ?? 0) / total) * 100),
+            low_trust_pct: Math.round(((tierRow.low_count as number ?? 0) / total) * 100),
+            insuff_pct: Math.round(((tierRow.insuff_count as number ?? 0) / total) * 100),
+            top_dimension: (dims.rows[0]?.dimension as string) ?? null,
+            bottom_dimension: (dims.rows[dims.rows.length - 1]?.dimension as string) ?? null,
+            highest_contradiction_type: (contraByType.rows[0]?.facility_type as string) ?? null,
+          });
+        } catch (err) {
+          console.error('Failed to fetch dashboard stats:', err);
+          res.status(500).json({ error: 'Failed to fetch dashboard stats' });
+        }
+      });
+
       // GET /api/facilities/meta — MUST be before /api/facilities/:id
       app.get('/api/facilities/meta', async (_req, res) => {
         try {

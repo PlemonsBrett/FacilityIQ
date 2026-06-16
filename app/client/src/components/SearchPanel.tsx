@@ -7,11 +7,12 @@ import { ANALYST_ID } from "../lib/analyst";
 interface Props {
   onSelect: (id: string) => void;
   selectedId: string | null;
+  onFirstFacilityId?: (id: string | null) => void;
 }
 
 const LIMIT = 25;
 
-export default function SearchPanel({ onSelect, selectedId }: Props) {
+export default function SearchPanel({ onSelect, selectedId, onFirstFacilityId }: Props) {
   const [query, setQuery] = useState("");
   const [state, setState] = useState("");
   const [facilityType, setFacilityType] = useState("");
@@ -35,7 +36,11 @@ export default function SearchPanel({ onSelect, selectedId }: Props) {
   function load(q: string, pg: number) {
     setLoading(true);
     fetchFacilities({ q, page: pg, limit: LIMIT, state, facilityType, contradictionsOnly })
-      .then((data) => { setFacilities(data); setLoading(false); })
+      .then((data) => {
+        setFacilities(data);
+        setLoading(false);
+        if (pg === 1) onFirstFacilityId?.(data[0]?.facility_id ?? null);
+      })
       .catch(() => setLoading(false));
   }
 
@@ -69,7 +74,7 @@ export default function SearchPanel({ onSelect, selectedId }: Props) {
       </div>
 
       {/* Search */}
-      <div style={{ padding: "10px 12px", borderBottom: "1px solid var(--fiq-border)", flexShrink: 0 }}>
+      <div data-tour="search-bar" style={{ padding: "10px 12px", borderBottom: "1px solid var(--fiq-border)", flexShrink: 0 }}>
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
@@ -84,19 +89,20 @@ export default function SearchPanel({ onSelect, selectedId }: Props) {
       </div>
 
       {/* Filters */}
-      <div style={{
+      <div data-tour="search-filters" style={{
         padding: "6px 12px", borderBottom: "1px solid var(--fiq-border)",
         display: "flex", gap: 5, flexWrap: "wrap", flexShrink: 0,
       }}>
-        <select value={state} onChange={(e) => setState(e.target.value)} style={selectStyle}>
+        <select data-tour="state-filter" value={state} onChange={(e) => setState(e.target.value)} style={selectStyle}>
           <option value="">All States</option>
           {meta.states.map((s) => <option key={s} value={s}>{s}</option>)}
         </select>
-        <select value={facilityType} onChange={(e) => setFacilityType(e.target.value)} style={selectStyle}>
+        <select data-tour="type-filter" value={facilityType} onChange={(e) => setFacilityType(e.target.value)} style={selectStyle}>
           <option value="">All Types</option>
           {meta.facility_types.map((t) => <option key={t} value={t}>{t}</option>)}
         </select>
         <button
+          data-tour="contradiction-filter"
           onClick={() => setContradictionsOnly((c) => !c)}
           style={{
             background: contradictionsOnly ? "rgba(255,54,33,0.2)" : "var(--fiq-bg-input)",

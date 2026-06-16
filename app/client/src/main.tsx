@@ -9,15 +9,20 @@ import { initTheme } from './lib/theme.ts';
 initTheme();
 
 function Root() {
-  // Demo-only splash, opt-in via ?splash=on (off by default).
-  const [showSplash, setShowSplash] = useState(
-    () => new URLSearchParams(window.location.search).get('splash') === 'on'
-  );
+  // Show splash whenever fiq_tour_seen is absent — no URL param needed.
+  // Hidden reset button clears localStorage so next load replays the full experience.
+  const [showSplash, setShowSplash] = useState(() => !localStorage.getItem("fiq_tour_seen"));
+  const [splashDone, setSplashDone] = useState(() => !!localStorage.getItem("fiq_tour_seen"));
+
+  function handleSplashComplete() {
+    setShowSplash(false);
+    setSplashDone(true);
+  }
 
   return (
     <>
-      <App />
-      {showSplash && <SplashScreen onComplete={() => setShowSplash(false)} />}
+      <App splashDone={splashDone} />
+      {showSplash && <SplashScreen onComplete={handleSplashComplete} />}
     </>
   );
 }

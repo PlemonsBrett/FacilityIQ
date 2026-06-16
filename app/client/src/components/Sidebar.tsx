@@ -5,6 +5,8 @@ import { getTheme, toggleTheme } from "../lib/theme";
 interface Props {
   view: View;
   onViewChange: (v: View) => void;
+  onStartTour: () => void;
+  onResetDemo: () => void;
 }
 
 const NAV: { view: View; icon: string; label: string }[] = [
@@ -13,7 +15,7 @@ const NAV: { view: View; icon: string; label: string }[] = [
   { view: "board", icon: "⊟", label: "Board" },
 ];
 
-export default function Sidebar({ view, onViewChange }: Props) {
+export default function Sidebar({ view, onViewChange, onStartTour, onResetDemo }: Props) {
   const [isDark, setIsDark] = useState(getTheme() === "dark");
 
   function handleTheme() {
@@ -64,6 +66,18 @@ export default function Sidebar({ view, onViewChange }: Props) {
 
       <div style={{ flex: 1 }} />
 
+      {/* Start Tour button */}
+      <button
+        onClick={onStartTour}
+        className="fiq-sidebar-btn"
+        title="Start Tour"
+        style={{ ...btnBase, color: "#5FD3E3", fontSize: 13 }}
+      >
+        ◎
+        <span className="fiq-sidebar-tip" style={tip}>Start Tour</span>
+      </button>
+
+      {/* Theme toggle */}
       <button
         onClick={handleTheme}
         className="fiq-sidebar-btn"
@@ -75,6 +89,21 @@ export default function Sidebar({ view, onViewChange }: Props) {
           {isDark ? "Light mode" : "Dark mode"}
         </span>
       </button>
+
+      {/* Hidden reset — small dot, no tooltip, restores splash+tour for next judge */}
+      <button
+        onClick={onResetDemo}
+        title=""
+        aria-label="Reset demo"
+        style={{
+          ...btnBase,
+          width: 6, height: 6,
+          borderRadius: "50%",
+          background: "var(--fiq-border)",
+          marginBottom: 4,
+          opacity: 0.3,
+        }}
+      />
     </div>
   );
 }
