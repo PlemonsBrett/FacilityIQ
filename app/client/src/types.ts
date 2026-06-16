@@ -91,6 +91,14 @@ export function overallScore(signals: TrustSignal[]): number | null {
   return Math.round(valid.reduce((a, b) => a + b, 0) / valid.length);
 }
 
+export interface FieldOverride {
+  field_name: string;
+  new_value: string;
+  analyst_id: string | null;
+  reason: string | null;
+  updated_at: string;
+}
+
 export type ReviewStatus =
   | "not_started"
   | "in_progress"

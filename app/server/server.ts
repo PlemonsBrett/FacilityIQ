@@ -280,6 +280,52 @@ createApp({
         }
       });
 
+      // GET /api/facilities/:id/overrides — latest value per field (for UI merge)
+      app.get('/api/facilities/:id/overrides', async (req, res) => {
+        try {
+          const { id } = req.params;
+          const { rows } = await appkit.lakebase.query(`
+            SELECT DISTINCT ON (field_name)
+              field_name, new_value, analyst_id, reason, updated_at
+            FROM facilityiq.facilities_overrides
+            WHERE facility_id = $1
+            ORDER BY field_name, updated_at DESC
+          `, [id]);
+          res.json(rows);
+        } catch (err) {
+          console.error('Failed to fetch overrides:', err);
+          res.status(500).json({ error: 'Failed to fetch overrides' });
+        }
+      });
+
+      // POST /api/facilities/:id/overrides — write a field-level correction
+      app.post('/api/facilities/:id/overrides', async (req, res) => {
+        try {
+          const { id } = req.params;
+          const schema = z.object({
+            field_name: z.string().min(1),
+            new_value:  z.string(),
+            analyst_id: z.string(),
+            reason:     z.string().min(1),
+          });
+          const parsed = schema.safeParse(req.body);
+          if (!parsed.success) {
+            res.status(400).json({ error: parsed.error.flatten() });
+            return;
+          }
+          const { field_name, new_value, analyst_id, reason } = parsed.data;
+          await appkit.lakebase.query(`
+            INSERT INTO facilityiq.facilities_overrides
+              (facility_id, field_name, new_value, analyst_id, reason)
+            VALUES ($1, $2, $3, $4, $5)
+          `, [id, field_name, new_value, analyst_id, reason]);
+          res.status(201).json({ facility_id: id, field_name, new_value });
+        } catch (err) {
+          console.error('Failed to save override:', err);
+          res.status(500).json({ error: 'Failed to save override' });
+        }
+      });
+
       // GET /api/facilities/:id/actions?analyst_id=<uuid>
       app.get('/api/facilities/:id/actions', async (req, res) => {
         try {

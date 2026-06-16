@@ -1,4 +1,4 @@
-import type { FacilityListItem, FacilityDetail, UserAction, ReviewCard, ReviewStatus } from "../types";
+import type { FacilityListItem, FacilityDetail, UserAction, ReviewCard, ReviewStatus, FieldOverride } from "../types";
 import {
   filterDummyList,
   DUMMY_DETAILS,
@@ -147,6 +147,26 @@ export async function postReviewStatus(
   if (result === null) {
     setLocalKanbanStatus(facilityId, status, parked_reason, notes);
   }
+}
+
+export async function fetchFieldOverrides(facilityId: string): Promise<FieldOverride[]> {
+  const result = await tryFetch<FieldOverride[]>(`/api/facilities/${facilityId}/overrides`);
+  return result ?? [];
+}
+
+export async function postFieldOverride(
+  facilityId: string,
+  fieldName: string,
+  newValue: string,
+  analystId: string,
+  reason: string,
+): Promise<boolean> {
+  const result = await tryFetch<unknown>(`/api/facilities/${facilityId}/overrides`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ field_name: fieldName, new_value: newValue, analyst_id: analystId, reason }),
+  });
+  return result !== null;
 }
 
 export async function fetchReviewStatus(
