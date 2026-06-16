@@ -22,6 +22,28 @@ export interface TrustSignal {
   extracted_at: string;
 }
 
+export interface TrustRerunResult {
+  facility_id: string;
+  extraction_model: string;
+  overall_trust_score: string | number | null;
+  trust_signals: TrustSignal[];
+}
+
+export interface CleanupSuggestion {
+  field_name: string;
+  current_value: string | null;
+  suggested_value: string;
+  reason: string;
+  confidence: "high" | "medium" | "low";
+}
+
+export interface CleanupSuggestionResult {
+  facility_id: string;
+  extraction_model: string;
+  source: string;
+  suggestions: CleanupSuggestion[];
+}
+
 export interface FacilityDetail {
   facility: {
     facility_id: string;
@@ -30,9 +52,9 @@ export interface FacilityDetail {
     state: string | null;
     district: string | null;
     description: string | null;
-    capability?: string | null;
-    procedure?: string | null;
-    equipment?: string | null;
+    capability?: string | string[] | null;
+    procedure?: string | string[] | null;
+    equipment?: string | string[] | null;
     capacity: number | null;
     year_established: number | null;
     number_doctors: number | null;
@@ -41,6 +63,7 @@ export interface FacilityDetail {
     official_website: string | null;
     address_line1: string | null;
     overridden_fields: string[];
+    overall_trust_score?: string | null;
   };
   trust_signals: TrustSignal[];
 }
@@ -88,6 +111,14 @@ export function overallScore(signals: TrustSignal[]): number | null {
     .map((s) => scoreToInt(s.trust_score) as number);
   if (valid.length === 0) return null;
   return Math.round(valid.reduce((a, b) => a + b, 0) / valid.length);
+}
+
+export interface FieldOverride {
+  field_name: string;
+  new_value: string;
+  analyst_id: string | null;
+  reason: string | null;
+  updated_at: string;
 }
 
 export type ReviewStatus =

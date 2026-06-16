@@ -1,10 +1,10 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { Pencil } from "lucide-react";
-import type { FacilityDetail, ReviewStatus } from "../types";
+import type { CleanupSuggestion, FacilityDetail, ReviewStatus, TrustSignal } from "../types";
 import { overallScore, scoreToInt, trustColor, trustLabel } from "../types";
 import Workbench from "./Workbench";
-import { postAction, fetchReviewStatus, postReviewStatus } from "../lib/api";
+import { postAction, fetchReviewStatus, postReviewStatus, fetchFieldOverrides, postFieldOverride, rerunTrustScore, fetchCleanupSuggestions } from "../lib/api";
 
 // ── Review status config ──────────────────────────────────────────────────────
 
@@ -15,6 +15,19 @@ const REVIEW_STATUS_CONFIG: Record<ReviewStatus, { label: string; color: string 
   called:              { label: "Called",       color: "#fb923c" },
   parked:              { label: "Parked",       color: "#64748b" },
   validation_complete: { label: "Validated",    color: "#4ade80" },
+};
+
+const FIELD_LABELS: Record<string, string> = {
+  name: "Facility Name",
+  facility_type_id: "Facility Type",
+  address_city: "City",
+  address_state_or_region: "State",
+  description: "Description",
+  capability: "Capability",
+  equipment: "Equipment",
+  procedure: "Procedure",
+  capacity: "Bed Capacity",
+  year_established: "Year Established",
 };
 
 // ── Local types ───────────────────────────────────────────────────────────────
@@ -32,7 +45,9 @@ interface TextHighlight {
 
 interface FacilityField {
   label: string;
+  field_name: string;
   value: string | null;
+  valueItems?: string[];
   category: "Identity" | "Clinical" | "Capacity" | "Operations";
   highlights?: TextHighlight[];
   missing?: boolean;
@@ -51,6 +66,28 @@ interface ScoreBandDef {
 }
 
 // ── Data helpers ──────────────────────────────────────────────────────────────
+
+function normalizeArrayField(raw: string | string[] | null | undefined): { text: string | null; items: string[] | undefined } {
+  if (raw === null || raw === undefined) return { text: null, items: undefined };
+
+  let arr: string[] | null = null;
+  if (Array.isArray(raw)) {
+    arr = raw.map((s) => String(s)).filter(Boolean);
+  } else if (typeof raw === "string" && raw.trimStart().startsWith("[")) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) arr = parsed.map((s) => String(s)).filter(Boolean);
+    } catch { /* fall through to plain string */ }
+  }
+
+  if (arr !== null) {
+    return arr.length === 0
+      ? { text: null, items: undefined }
+      : { text: arr.join(", "), items: arr.length > 1 ? arr : undefined };
+  }
+
+  return { text: (raw as string) || null, items: undefined };
+}
 
 function segmentText(text: string, highlights: TextHighlight[]): Segment[] {
   const positioned = highlights
@@ -111,26 +148,31 @@ function buildFields(detail: FacilityDetail): FacilityField[] {
 
   const sigText = (dim: string) =>
     trust_signals.find((s) => s.dimension === dim)?.evidence_text ?? null;
-  const capabilityText = facility.capability ?? sigText("capability");
-  const equipmentText  = facility.equipment  ?? sigText("equipment");
-  const procedureText  = facility.procedure  ?? sigText("procedure");
+
+  const cap = normalizeArrayField(facility.capability);
+  const eq  = normalizeArrayField(facility.equipment);
+  const pr  = normalizeArrayField(facility.procedure);
+
+  const capabilityText = cap.text ?? sigText("capability");
+  const equipmentText  = eq.text  ?? sigText("equipment");
+  const procedureText  = pr.text  ?? sigText("procedure");
 
   return [
-    { label: "Facility Name",    value: facility.facility_name,    category: "Identity" },
-    { label: "City",             value: facility.district,         category: "Identity" },
-    { label: "State",            value: facility.state,            category: "Identity" },
-    { label: "Facility Type",    value: facility.facility_type,    category: "Identity" },
-    { label: "Phone",            value: facility.official_phone,   category: "Identity" },
-    { label: "Email",            value: facility.email,            category: "Identity" },
-    { label: "Website",          value: facility.official_website, category: "Identity" },
-    { label: "Address",          value: facility.address_line1,    category: "Identity" },
-    { label: "Description",      value: facility.description,      category: "Identity", highlights: getDescriptionHighlights() },
-    { label: "Capability",       value: capabilityText,            category: "Clinical", highlights: getHighlights("capability", capabilityText) },
-    { label: "Equipment",        value: equipmentText,             category: "Clinical", highlights: getHighlights("equipment",  equipmentText) },
-    { label: "Procedure",        value: procedureText,             category: "Clinical", highlights: getHighlights("procedure",  procedureText) },
-    { label: "Bed Capacity",     value: capStr,                    category: "Capacity", highlights: getHighlights("capacity", capStr), missing: capStr === null },
-    { label: "Doctors",          value: docStr,                    category: "Capacity", missing: docStr === null },
-    { label: "Year Established", value: yearStr,                   category: "Capacity", missing: yearStr === null },
+    { label: "Facility Name",    field_name: "name",                    value: facility.facility_name,    category: "Identity" },
+    { label: "City",             field_name: "address_city",            value: facility.district,         category: "Identity" },
+    { label: "State",            field_name: "address_state_or_region", value: facility.state,            category: "Identity" },
+    { label: "Facility Type",    field_name: "facility_type_id",        value: facility.facility_type,    category: "Identity" },
+    { label: "Phone",            field_name: "official_phone",          value: facility.official_phone,   category: "Identity" },
+    { label: "Email",            field_name: "email",                   value: facility.email,            category: "Identity" },
+    { label: "Website",          field_name: "official_website",        value: facility.official_website, category: "Identity" },
+    { label: "Address",          field_name: "address_line1",           value: facility.address_line1,    category: "Identity" },
+    { label: "Description",      field_name: "description",             value: facility.description,      category: "Identity", highlights: getDescriptionHighlights() },
+    { label: "Capability",       field_name: "capability",              value: capabilityText, valueItems: cap.items, category: "Clinical", highlights: getHighlights("capability", capabilityText) },
+    { label: "Equipment",        field_name: "equipment",               value: equipmentText,  valueItems: eq.items,  category: "Clinical", highlights: getHighlights("equipment",  equipmentText) },
+    { label: "Procedure",        field_name: "procedure",               value: procedureText,  valueItems: pr.items,  category: "Clinical", highlights: getHighlights("procedure",  procedureText) },
+    { label: "Bed Capacity",     field_name: "capacity",                value: capStr,                    category: "Capacity", highlights: getHighlights("capacity", capStr), missing: capStr === null },
+    { label: "Doctors",          field_name: "number_doctors",          value: docStr,                    category: "Capacity", missing: docStr === null },
+    { label: "Year Established", field_name: "year_established",        value: yearStr,                   category: "Capacity", missing: yearStr === null },
   ];
 }
 
@@ -311,16 +353,18 @@ function HighlightSpan({
 
 function FieldRow({
   field,
+  isOverridden,
   onSpanEnter,
   onSpanLeave,
   onVerify,
   onEdit,
 }: {
   field: FacilityField;
+  isOverridden?: boolean;
   onSpanEnter: (span: HTMLElement, id: string) => void;
   onSpanLeave: (id: string) => void;
   onVerify: (label: string) => void;
-  onEdit: (label: string, currentValue: string) => void;
+  onEdit: (label: string, fieldName: string, currentValue: string) => void;
 }) {
   const isMissing = field.missing || field.value === null;
   const [verified, setVerified] = useState(false);
@@ -337,35 +381,61 @@ function FieldRow({
       style={{ borderBottom: "1px solid var(--fiq-border)" }}
     >
       <span
-        className="w-32 shrink-0 text-[10px] font-semibold uppercase tracking-wide pt-0.5"
+        className="w-32 shrink-0 text-[10px] font-semibold uppercase tracking-wide pt-0.5 flex items-center gap-1"
         style={{ color: "var(--fiq-text-faintest)" }}
       >
         {field.label}
+        {isOverridden && (
+          <span className="text-[8px] px-1 py-0.5 rounded font-bold normal-case tracking-normal bg-amber-100 text-amber-700">
+            edited
+          </span>
+        )}
       </span>
       {isMissing ? (
-        <span className="flex-1 text-sm italic" style={{ color: "var(--fiq-text-faintest)" }}>
-          Not provided
-        </span>
+        <div className="flex-1 flex items-center gap-2">
+          <span className="text-sm italic" style={{ color: "var(--fiq-text-faintest)" }}>
+            Not provided
+          </span>
+          <button
+            onClick={() => onEdit(field.label, field.field_name, "")}
+            className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded border transition-colors hover:text-indigo-600 hover:border-indigo-300"
+            style={{ color: "var(--fiq-text-faintest)", borderColor: "var(--fiq-border)" }}
+          >
+            <Pencil size={11} />
+            Add
+          </button>
+        </div>
       ) : (
         <div className="flex-1">
-          <span className="text-sm leading-relaxed" style={{ color: "var(--fiq-text-muted)" }}>
-            {field.highlights?.length ? (
-              segmentText(field.value!, field.highlights).map((seg, i) =>
-                seg.kind === "plain" ? (
-                  <span key={i}>{seg.text}</span>
-                ) : (
-                  <HighlightSpan
-                    key={i}
-                    hl={seg.hl}
-                    onEnter={(el) => onSpanEnter(el, seg.hl.id)}
-                    onLeave={() => onSpanLeave(seg.hl.id)}
-                  />
-                ),
-              )
-            ) : (
-              field.value
-            )}
-          </span>
+          {field.valueItems ? (
+            <ul className="mb-1.5 flex flex-col gap-0.5">
+              {field.valueItems.map((item, i) => (
+                <li key={i} className="flex items-start gap-1.5 text-sm" style={{ color: "var(--fiq-text-muted)" }}>
+                  <span className="mt-1.5 shrink-0 w-1 h-1 rounded-full" style={{ background: "var(--fiq-text-faintest)" }} />
+                  {item}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <span className="text-sm leading-relaxed" style={{ color: "var(--fiq-text-muted)" }}>
+              {field.highlights?.length ? (
+                segmentText(field.value!, field.highlights).map((seg, i) =>
+                  seg.kind === "plain" ? (
+                    <span key={i}>{seg.text}</span>
+                  ) : (
+                    <HighlightSpan
+                      key={i}
+                      hl={seg.hl}
+                      onEnter={(el) => onSpanEnter(el, seg.hl.id)}
+                      onLeave={() => onSpanLeave(seg.hl.id)}
+                    />
+                  ),
+                )
+              ) : (
+                field.value
+              )}
+            </span>
+          )}
           <div className="flex gap-1.5 mt-1.5">
             <button
               onClick={handleVerify}
@@ -378,7 +448,7 @@ function FieldRow({
               {verified ? "✓ Verified" : "✓ Verify"}
             </button>
             <button
-              onClick={() => onEdit(field.label, field.value!)}
+              onClick={() => onEdit(field.label, field.field_name, field.value!)}
               className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded border transition-colors hover:text-indigo-600 hover:border-indigo-300"
               style={{ color: "var(--fiq-text-faintest)", borderColor: "var(--fiq-border)" }}
             >
@@ -397,6 +467,7 @@ function FieldRow({
 function CategorySection({
   name,
   fields,
+  overriddenFields,
   onSpanEnter,
   onSpanLeave,
   onVerify,
@@ -404,10 +475,11 @@ function CategorySection({
 }: {
   name: string;
   fields: FacilityField[];
+  overriddenFields: Set<string>;
   onSpanEnter: (span: HTMLElement, id: string) => void;
   onSpanLeave: (id: string) => void;
   onVerify: (label: string) => void;
-  onEdit: (label: string, currentValue: string) => void;
+  onEdit: (label: string, fieldName: string, currentValue: string) => void;
 }) {
   if (fields.length === 0) return null;
   return (
@@ -422,6 +494,7 @@ function CategorySection({
         <FieldRow
           key={f.label}
           field={f}
+          isOverridden={overriddenFields.has(f.field_name)}
           onSpanEnter={onSpanEnter}
           onSpanLeave={onSpanLeave}
           onVerify={onVerify}
@@ -442,12 +515,14 @@ function EditFieldModal({
 }: {
   fieldLabel: string;
   currentValue: string;
-  onSubmit: (newValue: string, reason: string) => void;
+  onSubmit: (newValue: string, reason: string) => Promise<void>;
   onClose: () => void;
 }) {
   const [newValue, setNewValue] = useState(currentValue);
   const [reason, setReason] = useState("");
-  const valid = newValue.trim() !== currentValue.trim() && reason.trim().length > 0;
+  const [saving, setSaving] = useState(false);
+  const isAdding = currentValue === "";
+  const valid = newValue.trim().length > 0 && newValue.trim() !== currentValue.trim() && reason.trim().length > 0;
 
   return createPortal(
     <div
@@ -460,7 +535,7 @@ function EditFieldModal({
         style={{ background: "var(--fiq-bg-surface)", border: "1px solid var(--fiq-border)" }}
       >
         <h3 className="font-semibold text-sm mb-1" style={{ color: "var(--fiq-text)" }}>
-          Edit Field
+          {isAdding ? "Add Field Value" : "Edit Field"}
         </h3>
         <p className="text-[10px] font-semibold uppercase tracking-wide mb-4" style={{ color: "var(--fiq-text-faintest)" }}>
           {fieldLabel}
@@ -489,14 +564,177 @@ function EditFieldModal({
             Cancel
           </button>
           <button
-            onClick={() => valid && onSubmit(newValue.trim(), reason.trim())}
-            disabled={!valid}
+            onClick={async () => {
+              if (!valid) return;
+              setSaving(true);
+              await onSubmit(newValue.trim(), reason.trim());
+              setSaving(false);
+            }}
+            disabled={!valid || saving}
             className="px-4 py-1.5 text-xs font-semibold rounded-lg disabled:opacity-40"
             style={{ background: "var(--fiq-text)", color: "var(--fiq-bg)" }}
           >
-            Submit Edit
+            {saving ? "Saving…" : isAdding ? "Add Value" : "Submit Edit"}
           </button>
         </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+// ── CleanupSuggestionsModal ───────────────────────────────────────────────────
+
+function CleanupSuggestionsModal({
+  suggestions,
+  loading,
+  error,
+  onApply,
+  onClose,
+}: {
+  suggestions: CleanupSuggestion[];
+  loading: boolean;
+  error: string | null;
+  onApply: (suggestions: CleanupSuggestion[]) => Promise<void>;
+  onClose: () => void;
+}) {
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [applying, setApplying] = useState(false);
+
+  useEffect(() => {
+    setSelected(new Set(suggestions.map((s) => s.field_name)));
+  }, [suggestions]);
+
+  const selectedSuggestions = suggestions.filter((s) => selected.has(s.field_name));
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center"
+      style={{ background: "rgba(0,0,0,0.5)" }}
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div
+        className="w-full max-w-2xl mx-4 rounded-2xl p-6 shadow-2xl max-h-[82vh] overflow-y-auto"
+        style={{ background: "var(--fiq-bg-surface)", border: "1px solid var(--fiq-border)" }}
+      >
+        <div className="flex items-start justify-between gap-3 mb-4">
+          <div>
+            <h3 className="font-semibold text-sm mb-1" style={{ color: "var(--fiq-text)" }}>
+              Bronze Cleanup Suggestions
+            </h3>
+            <p className="text-xs" style={{ color: "var(--fiq-text-faintest)" }}>
+              Review suggested field edits before applying them.
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-xs font-semibold px-3 py-1.5 rounded-lg border"
+            style={{ borderColor: "var(--fiq-border)", color: "var(--fiq-text-faintest)" }}
+          >
+            Close
+          </button>
+        </div>
+
+        {loading && (
+          <div className="text-sm py-8 text-center" style={{ color: "var(--fiq-text-faintest)" }}>
+            Looking up bronze data and asking the LLM...
+          </div>
+        )}
+
+        {!loading && error && (
+          <div className="rounded-xl px-4 py-3 text-sm" style={{ color: "var(--fiq-trust-low)", background: "rgba(220,38,38,0.08)", border: "1px solid rgba(220,38,38,0.25)" }}>
+            {error}
+          </div>
+        )}
+
+        {!loading && !error && suggestions.length === 0 && (
+          <div className="text-sm py-8 text-center" style={{ color: "var(--fiq-text-faintest)" }}>
+            No cleanup edits were suggested for this facility.
+          </div>
+        )}
+
+        {!loading && !error && suggestions.length > 0 && (
+          <>
+            <div className="flex flex-col gap-3">
+              {suggestions.map((suggestion) => (
+                <label
+                  key={suggestion.field_name}
+                  className="block rounded-xl p-4 cursor-pointer"
+                  style={{ background: "var(--fiq-bg-input)", border: "1px solid var(--fiq-border)" }}
+                >
+                  <div className="flex items-start gap-3">
+                    <input
+                      type="checkbox"
+                      checked={selected.has(suggestion.field_name)}
+                      onChange={(e) => {
+                        setSelected((prev) => {
+                          const next = new Set(prev);
+                          if (e.target.checked) next.add(suggestion.field_name);
+                          else next.delete(suggestion.field_name);
+                          return next;
+                        });
+                      }}
+                      className="mt-1"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 mb-2 flex-wrap">
+                        <span className="text-xs font-bold" style={{ color: "var(--fiq-text)" }}>
+                          {FIELD_LABELS[suggestion.field_name] ?? suggestion.field_name}
+                        </span>
+                        <span
+                          className="text-[9px] font-bold uppercase px-2 py-0.5 rounded-full"
+                          style={{ color: "var(--fiq-text-code)", background: "var(--fiq-bg-surface)", border: "1px solid var(--fiq-border)" }}
+                        >
+                          {suggestion.confidence}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                        <div>
+                          <div className="font-semibold mb-1" style={{ color: "var(--fiq-text-faintest)" }}>Current</div>
+                          <div className="break-words" style={{ color: "var(--fiq-text-muted)" }}>
+                            {suggestion.current_value || "Not provided"}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="font-semibold mb-1" style={{ color: "var(--fiq-text-faintest)" }}>Suggested</div>
+                          <div className="break-words" style={{ color: "var(--fiq-text)" }}>
+                            {suggestion.suggested_value}
+                          </div>
+                        </div>
+                      </div>
+                      <p className="text-xs mt-3" style={{ color: "var(--fiq-text-subdued)" }}>
+                        {suggestion.reason}
+                      </p>
+                    </div>
+                  </div>
+                </label>
+              ))}
+            </div>
+
+            <div className="flex justify-end gap-2 mt-5">
+              <button
+                onClick={onClose}
+                className="px-4 py-1.5 text-xs font-semibold rounded-lg border"
+                style={{ borderColor: "var(--fiq-border)", color: "var(--fiq-text-faintest)" }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  if (selectedSuggestions.length === 0) return;
+                  setApplying(true);
+                  await onApply(selectedSuggestions);
+                  setApplying(false);
+                }}
+                disabled={selectedSuggestions.length === 0 || applying}
+                className="px-4 py-1.5 text-xs font-semibold rounded-lg disabled:opacity-40"
+                style={{ background: "var(--fiq-text)", color: "var(--fiq-bg)" }}
+              >
+                {applying ? "Applying..." : `Apply Selected (${selectedSuggestions.length})`}
+              </button>
+            </div>
+          </>
+        )}
       </div>
     </div>,
     document.body,
@@ -718,21 +956,48 @@ interface Props {
 
 export default function GuidedAnalysis({ detail, analystId }: Props) {
   const { facility, trust_signals } = detail;
+  const [activeTrustSignals, setActiveTrustSignals] = useState<TrustSignal[]>(trust_signals);
+  const [rerunOverall, setRerunOverall] = useState<string | number | null>(null);
   const [showAll, setShowAll] = useState(false);
   const [flagOpen, setFlagOpen] = useState(false);
   const [flagHover, setFlagHover] = useState(false);
   const [overrideDim, setOverrideDim] = useState<string | null>(null);
-  const [editingField, setEditingField] = useState<{ label: string; value: string } | null>(null);
+  const [editingField, setEditingField] = useState<{ label: string; fieldName: string; value: string } | null>(null);
+  const [localOverrides, setLocalOverrides] = useState<Record<string, string>>({});
+  const [cleanupOpen, setCleanupOpen] = useState(false);
+  const [cleanupSuggestions, setCleanupSuggestions] = useState<CleanupSuggestion[]>([]);
+  const [cleanupLoading, setCleanupLoading] = useState(false);
+  const [cleanupError, setCleanupError] = useState<string | null>(null);
 
   const [reviewStatus, setReviewStatus] = useState<ReviewStatus>("not_started");
   const [_reviewParkedReason, setReviewParkedReason] = useState<string | null>(null);
   const [statusMenuOpen, setStatusMenuOpen] = useState(false);
   const [parkingFromStatus, setParkingFromStatus] = useState(false);
+  const [validatedBanner, setValidatedBanner] = useState(false);
+  const [rerunState, setRerunState] = useState<"idle" | "running" | "success" | "error">("idle");
+  const [lastRerunReason, setLastRerunReason] = useState<"edited" | "verified" | "manual">("manual");
+
+  useEffect(() => {
+    setActiveTrustSignals(trust_signals);
+    setRerunOverall(null);
+    setRerunState("idle");
+    setCleanupOpen(false);
+    setCleanupSuggestions([]);
+    setCleanupError(null);
+  }, [facility.facility_id, trust_signals]);
 
   useEffect(() => {
     fetchReviewStatus(facility.facility_id).then((r) => {
       setReviewStatus(r.status);
       setReviewParkedReason(r.parked_reason);
+    });
+  }, [facility.facility_id]);
+
+  useEffect(() => {
+    fetchFieldOverrides(facility.facility_id).then((overrides) => {
+      const map: Record<string, string> = {};
+      for (const ov of overrides) map[ov.field_name] = ov.new_value;
+      setLocalOverrides(map);
     });
   }, [facility.facility_id]);
 
@@ -742,6 +1007,10 @@ export default function GuidedAnalysis({ detail, analystId }: Props) {
     setReviewStatus(toStatus);
     setReviewParkedReason(null);
     await postReviewStatus(facility.facility_id, toStatus);
+    if (toStatus === "validation_complete") {
+      setValidatedBanner(true);
+      setTimeout(() => setValidatedBanner(false), 6000);
+    }
   }
 
   async function confirmParkedStatus(reason: string) {
@@ -757,20 +1026,89 @@ export default function GuidedAnalysis({ detail, analystId }: Props) {
   const showAllRef = useRef(showAll);
   useEffect(() => { showAllRef.current = showAll; }, [showAll]);
 
-  const fields = useMemo(() => buildFields(detail), [detail]);
+  const effectiveDetail = useMemo(
+    () => ({ ...detail, trust_signals: activeTrustSignals }),
+    [activeTrustSignals, detail],
+  );
+
+  const fields = useMemo(() => {
+    const raw = buildFields(effectiveDetail);
+    return raw.map((f) => {
+      const ov = localOverrides[f.field_name];
+      if (ov !== undefined) return { ...f, value: ov, missing: false };
+      return f;
+    });
+  }, [effectiveDetail, localOverrides]);
+
+  const overriddenFields = useMemo(() => new Set(Object.keys(localOverrides)), [localOverrides]);
 
   const scoreBands = useMemo((): ScoreBandDef[] =>
     ["capability", "equipment", "procedure", "completeness"].map((dim) => {
-      const sig = trust_signals.find((s) => s.dimension === dim);
+      const sig = activeTrustSignals.find((s) => s.dimension === dim);
       return {
         dimension: dim.charAt(0).toUpperCase() + dim.slice(1),
         score: sig ? scoreToInt(sig.trust_score) : null,
         confidence_tier: sig?.confidence_tier ?? "insufficient_data",
       };
     }),
-  [trust_signals]);
+  [activeTrustSignals]);
 
-  const overall = useMemo(() => overallScore(trust_signals), [trust_signals]);
+  const overall = useMemo(
+    () => scoreToInt(rerunOverall == null ? null : String(rerunOverall))
+      ?? scoreToInt(facility.overall_trust_score ?? null)
+      ?? overallScore(activeTrustSignals),
+    [activeTrustSignals, facility.overall_trust_score, rerunOverall],
+  );
+
+  async function handleRerunTrustScore(reason: "edited" | "verified" | "manual") {
+    setRerunState("running");
+    setLastRerunReason(reason);
+    const result = await rerunTrustScore(facility.facility_id, analystId, reason);
+    if (!result) {
+      setRerunState("error");
+      return;
+    }
+    setActiveTrustSignals(result.trust_signals);
+    setRerunOverall(result.overall_trust_score);
+    setRerunState("success");
+  }
+
+  const nextRerunReason = reviewStatus === "validation_complete" ? "verified" : lastRerunReason;
+
+  async function handleOpenCleanup() {
+    setCleanupOpen(true);
+    setCleanupLoading(true);
+    setCleanupError(null);
+    setCleanupSuggestions([]);
+    const result = await fetchCleanupSuggestions(facility.facility_id, analystId);
+    if (!result) {
+      setCleanupError("Cleanup suggestion lookup failed.");
+      setCleanupLoading(false);
+      return;
+    }
+    setCleanupSuggestions(result.suggestions);
+    setCleanupLoading(false);
+  }
+
+  async function handleApplyCleanupSuggestions(suggestions: CleanupSuggestion[]) {
+    for (const suggestion of suggestions) {
+      await postFieldOverride(
+        facility.facility_id,
+        suggestion.field_name,
+        suggestion.suggested_value,
+        analystId,
+        `LLM cleanup from bronze: ${suggestion.reason}`,
+      );
+    }
+    setLocalOverrides((prev) => {
+      const next = { ...prev };
+      for (const suggestion of suggestions) next[suggestion.field_name] = suggestion.suggested_value;
+      return next;
+    });
+    setCleanupOpen(false);
+    setRerunState("idle");
+    setLastRerunReason("edited");
+  }
 
   const grouped = useMemo(() => {
     const map = new Map<string, FacilityField[]>([
@@ -946,11 +1284,52 @@ export default function GuidedAnalysis({ detail, analystId }: Props) {
           </div>
         </div>
 
+        {/* Validated banner */}
+        {validatedBanner && (
+          <div
+            className="rounded-xl px-4 py-3 flex items-center gap-2 text-sm font-semibold"
+            style={{ background: "#d1fae5", color: "#065f46", border: "1px solid #a7f3d0" }}
+          >
+            <span>✓</span>
+            <span>Facility validated. Rerun the trust score to refresh evidence from the edited record.</span>
+          </div>
+        )}
+
         {/* Trust dimensions */}
         <div data-tour="trust-dimensions">
-          <p className="text-[10px] font-bold uppercase tracking-widest mb-3" style={{ color: "var(--fiq-text-faintest)" }}>
-            Trust Dimensions
-          </p>
+          <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
+            <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "var(--fiq-text-faintest)" }}>
+              Trust Dimensions
+            </p>
+            <div className="flex items-center gap-2">
+              {rerunState === "success" && (
+                <span className="text-[10px] font-semibold" style={{ color: "var(--fiq-trust-high)" }}>
+                  Refreshed from {lastRerunReason}
+                </span>
+              )}
+              {rerunState === "error" && (
+                <span className="text-[10px] font-semibold" style={{ color: "var(--fiq-trust-low)" }}>
+                  Rerun failed
+                </span>
+              )}
+              <button
+                onClick={() => handleRerunTrustScore(nextRerunReason)}
+                disabled={rerunState === "running"}
+                className="text-xs font-semibold px-3 py-1.5 rounded-full border transition-opacity disabled:opacity-50"
+                style={{
+                  color: "var(--fiq-text)",
+                  borderColor: "var(--fiq-border)",
+                  background: "var(--fiq-bg-surface)",
+                }}
+              >
+                {rerunState === "running"
+                  ? "Rerunning..."
+                  : reviewStatus === "validation_complete"
+                    ? "Rerun after Validation"
+                    : "Rerun Trust Score"}
+              </button>
+            </div>
+          </div>
           <div className="flex flex-wrap gap-3">
             {scoreBands.map((ts) => (
               <ScoreBand key={ts.dimension} ts={ts} onEdit={setOverrideDim} />
@@ -974,15 +1353,25 @@ export default function GuidedAnalysis({ detail, analystId }: Props) {
                 Hover highlighted text to read evidence
               </span>
             </div>
-            <button
-              onClick={() => setShowAll((v) => !v)}
-              className={`flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full border transition-all duration-150 ${
-                showAll ? "bg-indigo-600 text-white border-indigo-600" : "text-indigo-500 border-indigo-300 hover:border-indigo-500"
-              }`}
-              style={showAll ? {} : { background: "var(--fiq-bg-surface)" }}
-            >
-              {showAll ? "◉ Hide evidence" : "◈ Show all evidence"}
-            </button>
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                onClick={handleOpenCleanup}
+                disabled={cleanupLoading}
+                className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full border transition-opacity disabled:opacity-50"
+                style={{ background: "var(--fiq-bg-surface)", color: "var(--fiq-text)", borderColor: "var(--fiq-border)" }}
+              >
+                {cleanupLoading ? "Cleaning..." : "Clean Up with LLM"}
+              </button>
+              <button
+                onClick={() => setShowAll((v) => !v)}
+                className={`flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full border transition-all duration-150 ${
+                  showAll ? "bg-indigo-600 text-white border-indigo-600" : "text-indigo-500 border-indigo-300 hover:border-indigo-500"
+                }`}
+                style={showAll ? {} : { background: "var(--fiq-bg-surface)" }}
+              >
+                {showAll ? "◉ Hide evidence" : "◈ Show all evidence"}
+              </button>
+            </div>
           </div>
 
           {CATEGORY_ORDER.map((cat) => (
@@ -990,12 +1379,13 @@ export default function GuidedAnalysis({ detail, analystId }: Props) {
               key={cat}
               name={cat}
               fields={grouped.get(cat) ?? []}
+              overriddenFields={overriddenFields}
               onSpanEnter={handleSpanEnter}
               onSpanLeave={handleSpanLeave}
               onVerify={(label) =>
                 postAction(facility.facility_id, analystId, "note", `Verified: ${label}`)
               }
-              onEdit={(label, value) => setEditingField({ label, value })}
+              onEdit={(label, fieldName, value) => setEditingField({ label, fieldName, value })}
             />
           ))}
         </div>
@@ -1011,11 +1401,23 @@ export default function GuidedAnalysis({ detail, analystId }: Props) {
         <EditFieldModal
           fieldLabel={editingField.label}
           currentValue={editingField.value}
-          onSubmit={(newValue, reason) => {
-            postAction(facility.facility_id, analystId, "note", `Edit ${editingField.label}: "${newValue}" — ${reason}`);
+          onSubmit={async (newValue, reason) => {
+            await postFieldOverride(facility.facility_id, editingField.fieldName, newValue, analystId, reason);
+            setLocalOverrides((prev) => ({ ...prev, [editingField.fieldName]: newValue }));
             setEditingField(null);
+            setRerunState("idle");
+            setLastRerunReason("edited");
           }}
           onClose={() => setEditingField(null)}
+        />
+      )}
+      {cleanupOpen && (
+        <CleanupSuggestionsModal
+          suggestions={cleanupSuggestions}
+          loading={cleanupLoading}
+          error={cleanupError}
+          onApply={handleApplyCleanupSuggestions}
+          onClose={() => setCleanupOpen(false)}
         />
       )}
       {parkingFromStatus && (

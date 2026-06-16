@@ -43,16 +43,18 @@ India's healthcare facility dataset is messy: structured fields conflict with fr
 | Layer | Technology |
 | --- | --- |
 | Platform | Databricks Free Edition |
-| App Framework | Streamlit (Databricks Apps) |
-| Storage | Delta Lake (Unity Catalog) |
-| LLM | Databricks Foundation Model APIs (Llama 3.1 70B) |
+| App Framework | TypeScript/React + Node.js/Express (Databricks Apps via AppKit) |
+| Storage | Delta Lake (Unity Catalog) + Lakebase Postgres |
+| LLM | Databricks Foundation Model APIs (Llama 3.3 70B) |
 | Orchestration | Databricks Workflows |
 
 ---
 
 ## Local Development
 
-Dependencies are managed with [uv](https://docs.astral.sh/uv/). Python 3.12 required.
+The project has two independent development environments: the Python pipeline (notebooks) and the TypeScript app.
+
+**Pipeline (Python 3.12):** Dependencies managed with [uv](https://docs.astral.sh/uv/).
 
 ```bash
 # Install uv (if not already installed)
@@ -60,15 +62,20 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 
 # Install dependencies
 uv sync
-
-# Run the app locally (limited without a Databricks cluster)
-uv run streamlit run app/main.py
 ```
 
-> **Note on Databricks compatibility:** uv is for local development only. Databricks Apps reads a `requirements.txt` at deploy time, and notebooks/workflows run `%pip install` on the cluster — neither uses uv directly. When dependencies change, regenerate `requirements.txt` with:
-> ```bash
-> uv export --format requirements-txt --no-hashes -o requirements.txt
-> ```
+> Notebooks run inside Databricks — `spark` and Delta Lake APIs require a cluster context. Local Python is only for editing and linting.
+
+**App (TypeScript/Node.js):** Located in `app/`.
+
+```bash
+cd app
+npm install
+npm run dev     # local dev server (proxies Lakebase via .env)
+npm run build   # build client dist for deployment
+```
+
+> The app connects to Lakebase Postgres. Copy `.env.example` to `.env` and fill in your Databricks credentials before running `npm run dev`.
 
 ---
 
@@ -76,31 +83,42 @@ uv run streamlit run app/main.py
 
 - [Product Requirements Document](docs/PRD.md)
 - [Technical Design Document](docs/TDD.md)
+- [Backend Integration Guide](docs/BACKEND_INTEGRATION.md)
 - [Data Validation Checks](docs/Data_Validation_Checks.md)
 
-Data quality scoring queries live in [`sql/data_quality`](sql/data_quality/). Start with `08_top_100_worst_quality_scores.sql` to identify the 100 facilities most in need of review.
+Data quality scoring queries live in [`sql/data_quality`](sql/data_quality/).
 
 ---
 
 ## Repository Structure
 
 ```
-DBX-For-Good/
+facilityiq/
 ├── docs/
-│   ├── PRD.md                 # Product requirements
-│   └── TDD.md                 # Technical design
+│   ├── PRD.md                    # Product requirements
+│   ├── TDD.md                    # Technical design
+│   └── BACKEND_INTEGRATION.md   # Lakebase integration guide
 ├── notebooks/
-│   ├── 00_setup.py            # Delta table setup, raw data load
-│   ├── 01_trust_extraction.py # LLM batch pipeline
-│   └── 02_validate_signals.py # Extraction quality checks
+│   ├── 00_setup.py               # Delta table setup, raw data load
+│   ├── 01_trust_extraction.py    # LLM batch pipeline
+│   └── 02_validate_signals.py    # Extraction quality checks
 ├── app/
-│   ├── main.py                # Streamlit entry point
-│   ├── components/            # UI panels
-│   ├── services/              # Data access layer
-│   └── utils/                 # Delta client, session helpers
+│   ├── server/server.ts          # Node.js/Express backend (AppKit), all API routes
+│   ├── client/src/               # React/Vite frontend
+│   │   ├── App.tsx               # Root, routing
+│   │   ├── pages/                # DashboardPage, KanbanPage
+│   │   ├── components/           # FacilityCard, GuidedAnalysis, SearchPanel, SplashScreen, Sidebar
+│   │   └── lib/api.ts            # All fetch calls to /api/*
+│   ├── databricks.yml            # App bundle
+│   └── app.yaml                  # Databricks App manifest
 ├── prompts/
-│   └── trust_extraction.py    # LLM prompt template
-└── pyproject.toml             # Dependencies (managed with uv)
+│   ├── trust_extraction.py       # LLM prompt template
+│   ├── trust_signals_writer.py   # Trust signals schema/writer
+│   ├── quality_score.py          # Quality scoring logic
+│   └── email_outreach.py         # Outreach metadata extraction
+├── sql/
+│   └── data_quality/             # Analytical data quality queries
+└── pyproject.toml                # Pipeline dependencies (managed with uv)
 ```
 
 Notebooks run on a Databricks cluster in order: `00_setup.py` → `01_trust_extraction.py` → `02_validate_signals.py`.

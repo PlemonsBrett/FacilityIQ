@@ -14,9 +14,42 @@ WITH latest_overrides AS (
     SELECT
       facility_id, field_name, new_value,
       ROW_NUMBER() OVER (PARTITION BY facility_id, field_name ORDER BY updated_at DESC) AS rn
-    FROM facilityiq-lakebase.public.facilities_overrides
+    FROM `facilityiq-lakebase`.facilityiq.facilities_overrides
   )
   WHERE rn = 1
+),
+valid_silver AS (
+  SELECT *
+  FROM workspace.facilityiq.facilities_silver
+  WHERE unique_id RLIKE '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+),
+ranked_silver AS (
+  SELECT *
+  FROM (
+    SELECT
+      s.*,
+      ROW_NUMBER() OVER (
+        PARTITION BY unique_id
+        ORDER BY
+          (
+            CASE WHEN name IS NOT NULL THEN 1 ELSE 0 END +
+            CASE WHEN official_phone IS NOT NULL THEN 1 ELSE 0 END +
+            CASE WHEN email IS NOT NULL THEN 1 ELSE 0 END +
+            CASE WHEN official_website IS NOT NULL THEN 1 ELSE 0 END +
+            CASE WHEN address_city IS NOT NULL THEN 1 ELSE 0 END +
+            CASE WHEN address_state_or_region IS NOT NULL THEN 1 ELSE 0 END +
+            CASE WHEN address_country_code = 'IN' THEN 1 ELSE 0 END +
+            CASE WHEN facility_type_id IN ('hospital','clinic','dentist','pharmacy','farmacy','doctor','nursing_home') THEN 1 ELSE 0 END +
+            CASE WHEN description IS NOT NULL THEN 1 ELSE 0 END +
+            CASE WHEN capability IS NOT NULL THEN 1 ELSE 0 END +
+            CASE WHEN procedure IS NOT NULL THEN 1 ELSE 0 END +
+            CASE WHEN equipment IS NOT NULL THEN 1 ELSE 0 END
+          ) DESC,
+          _silver_processed_at DESC
+      ) AS _dedupe_rank
+    FROM valid_silver s
+  )
+  WHERE _dedupe_rank = 1
 ),
 ov AS (
   SELECT
@@ -97,6 +130,6 @@ SELECT
   COALESCE(try_cast(ov.longitude_ov AS DOUBLE), s.longitude)               AS longitude,
   COALESCE(overridden.overridden_fields, array()) AS overridden_fields,
   current_timestamp() AS _gold_built_at
-FROM workspace.facilityiq.facilities_silver s
+FROM ranked_silver s
 LEFT JOIN ov         ON s.unique_id = ov.facility_id
 LEFT JOIN overridden ON s.unique_id = overridden.facility_id;
