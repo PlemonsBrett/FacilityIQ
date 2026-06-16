@@ -333,12 +333,8 @@ createApp({
     // Safe to do on every startup — these tables hold only transient analyst state.
     try {
       await appkit.lakebase.query(`
-        CREATE SCHEMA IF NOT EXISTS facilityiq;
-
-        DROP TABLE IF EXISTS facilityiq.user_actions CASCADE;
-        DROP TABLE IF EXISTS facilityiq.facility_review CASCADE;
-        DROP TABLE IF EXISTS facilityiq.facilities_overrides CASCADE;
-        DROP TABLE IF EXISTS facilityiq.trust_signal_reruns CASCADE;
+        DROP SCHEMA IF EXISTS facilityiq CASCADE;
+        CREATE SCHEMA facilityiq;
 
         CREATE TABLE facilityiq.facilities_overrides (
           facility_id  TEXT        NOT NULL,
