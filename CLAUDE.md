@@ -60,7 +60,7 @@ The TypeScript app connects exclusively to Lakebase Postgres via `appkit.lakebas
 
 ### LLM Pipeline (`notebooks/01_trust_extraction.py`)
 
-Single LLM call per facility extracts all four trust dimensions in one JSON response. Model: `databricks-meta-llama-3-1-70b-instruct`, `temperature=0.0`. Prompt lives in `prompts/trust_extraction.py`.
+Single LLM call per facility extracts all four trust dimensions in one JSON response. Model: `databricks-meta-llama-3-3-70b-instruct`, `temperature=0.0`. Falls back to `databricks-meta-llama-3-1-8b-instruct` on rate limits. Prompt lives in `prompts/trust_extraction.py`.
 
 Two critical rules the pipeline enforces:
 1. **Coverage guard** — `capacity` (25% coverage) and `year_established` (48%) always produce `confidence_tier: "insufficient_data"` and `trust_score: null`. Never score low-coverage fields.
@@ -73,9 +73,11 @@ app/
 ├── server/server.ts          # Node.js/Express backend (AppKit), all API routes
 ├── client/src/               # React/Vite frontend
 │   ├── App.tsx               # Root, routing
-│   ├── pages/                # DashboardPage, KanbanPage
-│   ├── components/           # FacilityCard, GuidedAnalysis, SearchPanel, Workbench, Sidebar
-│   └── lib/api.ts            # All fetch calls to /api/* (falls back to dummy data)
+│   ├── ErrorBoundary.tsx     # Top-level error boundary
+│   ├── pages/                # DashboardPage, KanbanPage, LakebasePage
+│   ├── components/           # FacilityCard, GuidedAnalysis, SearchPanel, SplashScreen, Workbench, Sidebar
+│   ├── lib/api.ts            # All fetch calls to /api/* (falls back to dummy data)
+│   └── lib/analyst.ts        # Persistent analyst UUID (localStorage)
 ├── databricks.yml            # App bundle (separate from root pipeline bundle)
 └── app.yaml                  # Databricks App manifest
 ```
@@ -98,4 +100,4 @@ Run notebooks in sequence on a Databricks cluster:
 2. `01_trust_extraction.py` — runs LLM batch pipeline over all facilities
 3. `02_validate_signals.py` — spot-checks extraction quality
 
-If `01_trust_extraction.py` hits rate limits, process top 2,000 records first and fall back to DBRX Instruct if Llama 3.1 70B is unavailable.
+If `01_trust_extraction.py` hits rate limits, process top 2,000 records first. The pipeline automatically falls back to `databricks-meta-llama-3-1-8b-instruct` on rate-limit errors.
