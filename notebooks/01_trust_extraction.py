@@ -26,8 +26,8 @@ from prompts.email_outreach import (
 CATALOG = "workspace"   # same as 00_setup.py
 SCHEMA = "facilityiq"
 SOURCE_TABLE = "databricks_virtue_foundation_dataset_dais_2026.virtue_foundation_dataset.facilities"
-MODEL = "databricks-meta-llama-3-1-70b-instruct"
-FALLBACK_MODEL = "databricks-dbrx-instruct"
+MODEL = "databricks-meta-llama-3-3-70b-instruct"
+FALLBACK_MODEL = "databricks-meta-llama-3-1-8b-instruct"
 BATCH_SIZE = 50  # accumulated signals before flushing to Delta (~12-13 facilities at 4 signals each)
 
 # OpenAI-compatible client pointing at Databricks Foundation Model APIs
