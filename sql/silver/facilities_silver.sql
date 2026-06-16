@@ -7,12 +7,22 @@
 --   * email kept only if it matches a basic pattern (nulls Cloudflare-obfuscated values)
 --   * affiliationTypeIds parsed to a cleaned ARRAY<STRING>
 --   * latitude/longitude cast to DOUBLE (0% populated in this export -> mostly NULL)
+--   * Unicode sanitisation on all free-text fields:
+--       - null bytes (\x00) removed  — crash Delta write and Lakebase sync
+--       - Unicode replacement char (�) removed — Cloudflare email obfuscation artefact
+--       - C0/C1 control chars removed (keeps tab \x09, newline \x0A, CR \x0D)
+
+-- Inline macro: strip null bytes, replacement char, and control characters from a string.
+-- Applied to every free-text field that feeds downstream trust scoring or the UI.
+-- regexp_replace uses Java regex; \p{Cc} = Unicode "control" category (U+0000–U+001F, U+007F–U+009F).
+-- We keep \x09 (tab), \x0A (LF), \x0D (CR) by replacing the full \p{Cc} class then restoring them
+-- — simpler to just target the known bad ranges explicitly.
 
 CREATE OR REPLACE TABLE workspace.facilityiq.facilities_silver
 USING DELTA AS
 SELECT
   trim(unique_id) AS unique_id,
-  CASE WHEN lower(trim(name)) IN ('', 'null', 'na', 'n/a', 'unknown', 'none') THEN NULL ELSE trim(name) END AS name,
+  CASE WHEN lower(trim(regexp_replace(name,        '[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F\\x7F\\uFFFD]', ''))) IN ('', 'null', 'na', 'n/a', 'unknown', 'none') THEN NULL ELSE trim(regexp_replace(name,        '[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F\\x7F\\uFFFD]', '')) END AS name,
   CASE WHEN lower(trim(organization_type)) IN ('', 'null', 'na', 'n/a', 'unknown', 'none') THEN NULL ELSE trim(organization_type) END AS organization_type,
   trim(content_table_id) AS content_table_id,
   CASE WHEN lower(trim(officialPhone)) IN ('', 'null', 'na', 'n/a', 'unknown', 'none') THEN NULL ELSE trim(officialPhone) END AS official_phone,
@@ -22,9 +32,9 @@ SELECT
        THEN try_cast(trim(yearEstablished) AS INT) END AS year_established,
   try_cast(lower(trim(acceptsVolunteers)) AS BOOLEAN) AS accepts_volunteers,
   CASE WHEN lower(trim(facebookLink)) IN ('', 'null', 'na', 'n/a', 'unknown', 'none') THEN NULL ELSE trim(facebookLink) END AS facebook_link,
-  CASE WHEN lower(trim(address_line1)) IN ('', 'null', 'na', 'n/a', 'unknown', 'none') THEN NULL ELSE trim(address_line1) END AS address_line1,
-  CASE WHEN lower(trim(address_line2)) IN ('', 'null', 'na', 'n/a', 'unknown', 'none') THEN NULL ELSE trim(address_line2) END AS address_line2,
-  CASE WHEN lower(trim(address_line3)) IN ('', 'null', 'na', 'n/a', 'unknown', 'none') THEN NULL ELSE trim(address_line3) END AS address_line3,
+  CASE WHEN lower(trim(address_line1)) IN ('', 'null', 'na', 'n/a', 'unknown', 'none') THEN NULL ELSE trim(regexp_replace(address_line1, '[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F\\x7F\\uFFFD]', '')) END AS address_line1,
+  CASE WHEN lower(trim(address_line2)) IN ('', 'null', 'na', 'n/a', 'unknown', 'none') THEN NULL ELSE trim(regexp_replace(address_line2, '[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F\\x7F\\uFFFD]', '')) END AS address_line2,
+  CASE WHEN lower(trim(address_line3)) IN ('', 'null', 'na', 'n/a', 'unknown', 'none') THEN NULL ELSE trim(regexp_replace(address_line3, '[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F\\x7F\\uFFFD]', '')) END AS address_line3,
   CASE WHEN lower(trim(address_city)) IN ('', 'null', 'na', 'n/a', 'unknown', 'none') THEN NULL ELSE trim(address_city) END AS address_city,
   CASE WHEN lower(trim(address_stateOrRegion)) IN ('', 'null', 'na', 'n/a', 'unknown', 'none') THEN NULL ELSE trim(address_stateOrRegion) END AS address_state_or_region,
   CASE WHEN lower(trim(address_zipOrPostcode)) IN ('', 'null', 'na', 'n/a', 'unknown', 'none') THEN NULL ELSE trim(address_zipOrPostcode) END AS address_zip_or_postcode,
@@ -34,10 +44,10 @@ SELECT
   CASE WHEN lower(trim(facilityTypeId)) IN ('', 'null', 'na', 'n/a', 'unknown', 'none') THEN NULL ELSE lower(trim(facilityTypeId)) END AS facility_type_id,
   CASE WHEN lower(trim(operatorTypeId)) IN ('', 'null', 'na', 'n/a', 'unknown', 'none') THEN NULL ELSE lower(trim(operatorTypeId)) END AS operator_type_id,
   array_distinct(filter(from_json(affiliationTypeIds, 'array<string>'), x -> x IS NOT NULL AND trim(x) <> '')) AS affiliation_type_ids,
-  CASE WHEN lower(trim(description)) IN ('', 'null', 'na', 'n/a', 'unknown', 'none') THEN NULL ELSE trim(description) END AS description,
-  CASE WHEN lower(trim(capability)) IN ('', 'null', 'na', 'n/a', 'unknown', 'none') THEN NULL ELSE trim(capability) END AS capability,
-  CASE WHEN lower(trim(procedure)) IN ('', 'null', 'na', 'n/a', 'unknown', 'none') THEN NULL ELSE trim(procedure) END AS procedure,
-  CASE WHEN lower(trim(equipment)) IN ('', 'null', 'na', 'n/a', 'unknown', 'none') THEN NULL ELSE trim(equipment) END AS equipment,
+  CASE WHEN lower(trim(regexp_replace(description, '[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F\\x7F\\uFFFD]', ''))) IN ('', 'null', 'na', 'n/a', 'unknown', 'none') THEN NULL ELSE trim(regexp_replace(description, '[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F\\x7F\\uFFFD]', '')) END AS description,
+  CASE WHEN lower(trim(regexp_replace(capability,  '[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F\\x7F\\uFFFD]', ''))) IN ('', 'null', 'na', 'n/a', 'unknown', 'none') THEN NULL ELSE trim(regexp_replace(capability,  '[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F\\x7F\\uFFFD]', '')) END AS capability,
+  CASE WHEN lower(trim(regexp_replace(procedure,   '[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F\\x7F\\uFFFD]', ''))) IN ('', 'null', 'na', 'n/a', 'unknown', 'none') THEN NULL ELSE trim(regexp_replace(procedure,   '[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F\\x7F\\uFFFD]', '')) END AS procedure,
+  CASE WHEN lower(trim(regexp_replace(equipment,   '[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F\\x7F\\uFFFD]', ''))) IN ('', 'null', 'na', 'n/a', 'unknown', 'none') THEN NULL ELSE trim(regexp_replace(equipment,   '[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F\\x7F\\uFFFD]', '')) END AS equipment,
   try_cast(trim(area) AS INT) AS area,
   try_cast(trim(numberDoctors) AS INT) AS number_doctors,
   try_cast(trim(capacity) AS INT) AS capacity,
