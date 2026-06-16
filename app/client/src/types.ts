@@ -79,6 +79,45 @@ export interface UserAction {
   updated_at: string;
 }
 
+export interface DashboardDistributionBucket {
+  label: string;
+  count: number;
+  tier: "high" | "med" | "low";
+}
+
+export interface DashboardTierDatum {
+  name: string;
+  value: number;
+  tier: "high" | "med" | "low" | "insuff";
+}
+
+export interface DashboardDimensionAverage {
+  dim: string;
+  avg: number | null;
+}
+
+export interface DashboardTypeBreakdown {
+  type: string;
+  count: number;
+  contradictions: number;
+}
+
+export type DashboardFacility = FacilityListItem & { score: number | null };
+
+export interface DashboardData {
+  total: number;
+  contradictionCount: number;
+  avgScore: number | null;
+  distribution: DashboardDistributionBucket[];
+  tierData: DashboardTierDatum[];
+  dimAvgs: DashboardDimensionAverage[];
+  typeBreakdown: DashboardTypeBreakdown[];
+  top3: DashboardFacility[];
+  bottom3: DashboardFacility[];
+  shortlistedCount: number;
+  flaggedCount: number;
+}
+
 export function parseScore(raw: string | null): number | null {
   if (raw === null || raw === undefined) return null;
   const n = parseFloat(String(raw));

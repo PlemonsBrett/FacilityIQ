@@ -1,11 +1,11 @@
-import { useMemo, useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import {
   BarChart, Bar, XAxis, YAxis, Cell, ResponsiveContainer,
   PieChart, Pie, Tooltip,
 } from "recharts";
-import { DUMMY_LIST, DUMMY_DETAILS, allActedFacilityIds, latestLocalActions } from "../lib/dummy";
-import { overallScore, scoreToInt, trustColor, trustLabel } from "../types";
-import type { FacilityListItem } from "../types";
+import { fetchDashboardData } from "../lib/api";
+import { trustColor, trustLabel } from "../types";
+import type { DashboardData, FacilityListItem } from "../types";
 
 interface Props {
   analystId: string;
@@ -33,103 +33,8 @@ function useChartColors() {
 
 export default function DashboardPage({ analystId, onNavigateToFacility }: Props) {
   const colors = useChartColors();
-
-  const stats = useMemo(() => {
-    const facilityScores = DUMMY_LIST.map((f) => ({
-      ...f,
-      score: overallScore(DUMMY_DETAILS[f.facility_id]?.trust_signals ?? []),
-    }));
-
-    const buckets = [
-      { label: "0–29", min: 0, max: 29 },
-      { label: "30–39", min: 30, max: 39 },
-      { label: "40–49", min: 40, max: 49 },
-      { label: "50–59", min: 50, max: 59 },
-      { label: "60–69", min: 60, max: 69 },
-      { label: "70–79", min: 70, max: 79 },
-      { label: "80–89", min: 80, max: 89 },
-      { label: "90–100", min: 90, max: 100 },
-    ];
-
-    const distribution = buckets.map((b) => ({
-      label: b.label,
-      count: facilityScores.filter(
-        (f) => f.score !== null && f.score >= b.min && f.score <= b.max,
-      ).length,
-      tier: b.max < 40 ? "low" : b.max < 70 ? "med" : "high",
-    }));
-
-    const allScoredDims = Object.values(DUMMY_DETAILS)
-      .flatMap((d) => d.trust_signals)
-      .filter((s) => s.confidence_tier !== "insufficient_data" && s.trust_score !== null)
-      .map((s) => scoreToInt(s.trust_score) as number);
-    const avgScore =
-      allScoredDims.length
-        ? Math.round(allScoredDims.reduce((a, b) => a + b, 0) / allScoredDims.length)
-        : null;
-
-    const dimensions = ["capability", "equipment", "procedure", "completeness"];
-    const dimAvgs = dimensions.map((dim) => {
-      const vals = Object.values(DUMMY_DETAILS)
-        .flatMap((d) => d.trust_signals)
-        .filter((s) => s.dimension === dim && s.confidence_tier !== "insufficient_data" && s.trust_score !== null)
-        .map((s) => scoreToInt(s.trust_score) as number);
-      return {
-        dim,
-        avg: vals.length ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length) : null,
-      };
-    });
-
-    const types = [
-      ...new Set(DUMMY_LIST.map((f) => f.facility_type).filter(Boolean)),
-    ] as string[];
-    const typeBreakdown = types.map((t) => ({
-      type: t,
-      count: DUMMY_LIST.filter((f) => f.facility_type === t).length,
-      contradictions: DUMMY_LIST.filter(
-        (f) => f.facility_type === t && f.has_contradiction === 1,
-      ).length,
-    }));
-
-    const scored = facilityScores
-      .filter((f) => f.score !== null)
-      .sort((a, b) => b.score! - a.score!);
-    const top3 = scored.slice(0, 3);
-    const bottom3 = scored.slice(-3).reverse();
-
-    const actedIds = allActedFacilityIds(analystId);
-    const shortlistedCount = actedIds.filter((id) =>
-      latestLocalActions(id, analystId).some(
-        (a) => a.action_type === "shortlist" && a.content === "added",
-      ),
-    ).length;
-    const flaggedCount = actedIds.filter((id) =>
-      latestLocalActions(id, analystId).some(
-        (a) => a.action_type === "flag" && a.content === "flagged",
-      ),
-    ).length;
-
-    const tierData = [
-      { name: "High ≥70", value: facilityScores.filter((f) => f.score !== null && f.score >= 70).length, tier: "high" },
-      { name: "Med 40–69", value: facilityScores.filter((f) => f.score !== null && f.score >= 40 && f.score < 70).length, tier: "med" },
-      { name: "Low <40", value: facilityScores.filter((f) => f.score !== null && f.score < 40).length, tier: "low" },
-      { name: "Insuff. data", value: facilityScores.filter((f) => f.score === null).length, tier: "insuff" },
-    ];
-
-    return {
-      total: DUMMY_LIST.length,
-      contradictionCount: DUMMY_LIST.filter((f) => f.has_contradiction === 1).length,
-      avgScore,
-      distribution,
-      tierData,
-      dimAvgs,
-      typeBreakdown,
-      top3,
-      bottom3,
-      shortlistedCount,
-      flaggedCount,
-    };
-  }, [analystId]);
+  const [stats, setStats] = useState<DashboardData | null>(null);
+  const [loading, setLoading] = useState(true);
 
   const tierColor = (tier: string) =>
     tier === "high" ? colors.high : tier === "med" ? colors.med : tier === "low" ? colors.low : colors.insuff;
@@ -142,6 +47,44 @@ export default function DashboardPage({ analystId, onNavigateToFacility }: Props
     fontSize: 9, fontWeight: 700, color: "var(--fiq-text-code)",
     letterSpacing: "0.8px", textTransform: "uppercase", marginBottom: 14,
   };
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetchDashboardData(analystId)
+      .then((data) => {
+        if (!cancelled) setStats(data);
+      })
+      .catch(() => {
+        if (!cancelled) setStats(null);
+      })
+      .then(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [analystId]);
+
+  if (loading) {
+    return (
+      <div style={{ padding: "24px 28px" }}>
+        <div style={card}>Loading dashboard...</div>
+      </div>
+    );
+  }
+
+  if (!stats) {
+    return (
+      <div style={{ padding: "24px 28px" }}>
+        <div style={card}>
+          <div style={sectionLabel}>Dashboard unavailable</div>
+          <div style={{ color: "var(--fiq-text-subdued)", fontSize: 12 }}>
+            Live dashboard data could not be loaded from Lakebase.
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ padding: "24px 28px" }}>
@@ -187,8 +130,8 @@ export default function DashboardPage({ analystId, onNavigateToFacility }: Props
                 cursor={{ fill: "rgba(255,255,255,0.04)" }}
               />
               <Bar dataKey="count" radius={[3, 3, 0, 0]}>
-                {stats.distribution.map((entry, i) => (
-                  <Cell key={i} fill={tierColor(entry.tier)} fillOpacity={0.85} />
+                {stats.distribution.map((entry) => (
+                  <Cell key={entry.label} fill={tierColor(entry.tier)} fillOpacity={0.85} />
                 ))}
               </Bar>
             </BarChart>
@@ -208,8 +151,8 @@ export default function DashboardPage({ analystId, onNavigateToFacility }: Props
                 startAngle={90} endAngle={-270}
                 strokeWidth={0}
               >
-                {stats.tierData.map((entry, i) => (
-                  <Cell key={i} fill={tierColor(entry.tier)} />
+                {stats.tierData.map((entry) => (
+                  <Cell key={entry.name} fill={tierColor(entry.tier)} />
                 ))}
               </Pie>
             </PieChart>

@@ -40,6 +40,22 @@ const adjustedTrustScoreSql = `
   END
 `;
 
+const facilityScoresSql = `
+  SELECT
+    f.unique_id AS facility_id,
+    f.name AS facility_name,
+    f.address_state_or_region AS state,
+    f.facility_type_id AS facility_type,
+    ${adjustedTrustScoreSql}::real AS score,
+    MAX(CASE WHEN t.contradiction THEN 1 ELSE 0 END)::int AS has_contradiction,
+    COUNT(t.dimension)::int AS signal_count
+  FROM public.facilities f
+  LEFT JOIN public.facilities_trust_signals t ON f.unique_id = t.facility_id
+  LEFT JOIN public.facilities_quality_scores q ON q.facility_id = f.unique_id
+  LEFT JOIN facilityiq.facility_review r ON r.facility_id = f.unique_id
+  GROUP BY f.unique_id, f.name, f.address_state_or_region, f.facility_type_id, q.quality_score
+`;
+
 const trustSignalSchema = z.object({
   dimension: z.enum(TRUST_DIMENSIONS),
   trust_score: z.number().min(0).max(1).nullable(),
@@ -86,6 +102,32 @@ function sqlResultRows(result: unknown): Array<Record<string, unknown>> {
     });
     return out;
   });
+}
+
+function numberField(row: Record<string, unknown> | undefined, key: string, fallback = 0): number {
+  const value = row?.[key];
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string') {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return fallback;
+}
+
+function nullableNumberField(row: Record<string, unknown> | undefined, key: string): number | null {
+  if (!row || row[key] === null || row[key] === undefined) return null;
+  return numberField(row, key, 0);
+}
+
+function stringField(row: Record<string, unknown>, key: string): string | null {
+  const value = row[key];
+  return typeof value === 'string' ? value : null;
+}
+
+function dashboardTier(value: unknown): 'high' | 'med' | 'low' | 'insuff' {
+  return value === 'high' || value === 'med' || value === 'low' || value === 'insuff'
+    ? value
+    : 'insuff';
 }
 
 function buildCleanupPrompt(current: Record<string, unknown>, bronze: Record<string, unknown>): string {
@@ -364,6 +406,165 @@ createApp({
     }
 
     appkit.server.extend((app) => {
+
+      // GET /api/dashboard — live dashboard aggregates from Lakebase synced tables
+      app.get('/api/dashboard', async (req, res) => {
+        try {
+          const analystId = typeof req.query.analyst_id === 'string' ? req.query.analyst_id : '';
+          const [summary, distribution, tiers, dims, types, top, bottom, actions] = await Promise.all([
+            appkit.lakebase.query(`
+              WITH facility_scores AS (${facilityScoresSql})
+              SELECT
+                COUNT(*)::int AS total,
+                COALESCE(SUM(has_contradiction), 0)::int AS contradiction_count,
+                ROUND(AVG(score)::numeric * 100)::int AS avg_score
+              FROM facility_scores
+            `),
+            appkit.lakebase.query(`
+              WITH facility_scores AS (${facilityScoresSql}),
+              buckets(label, min_score, max_score, tier, sort_order) AS (
+                VALUES
+                  ('0-29', 0, 29, 'low', 1),
+                  ('30-39', 30, 39, 'low', 2),
+                  ('40-49', 40, 49, 'med', 3),
+                  ('50-59', 50, 59, 'med', 4),
+                  ('60-69', 60, 69, 'med', 5),
+                  ('70-79', 70, 79, 'high', 6),
+                  ('80-89', 80, 89, 'high', 7),
+                  ('90-100', 90, 100, 'high', 8)
+              )
+              SELECT b.label, COUNT(fs.facility_id)::int AS count, b.tier
+              FROM buckets b
+              LEFT JOIN facility_scores fs
+                ON fs.score IS NOT NULL
+               AND ROUND(fs.score::numeric * 100)::int BETWEEN b.min_score AND b.max_score
+              GROUP BY b.label, b.tier, b.sort_order
+              ORDER BY b.sort_order
+            `),
+            appkit.lakebase.query(`
+              WITH facility_scores AS (${facilityScoresSql})
+              SELECT
+                COUNT(CASE WHEN score >= 0.7 THEN 1 END)::int AS high_count,
+                COUNT(CASE WHEN score >= 0.4 AND score < 0.7 THEN 1 END)::int AS med_count,
+                COUNT(CASE WHEN score < 0.4 THEN 1 END)::int AS low_count,
+                COUNT(CASE WHEN score IS NULL THEN 1 END)::int AS insuff_count
+              FROM facility_scores
+            `),
+            appkit.lakebase.query(`
+              SELECT dimension AS dim, ROUND(AVG(trust_score)::numeric * 100)::int AS avg
+              FROM public.facilities_trust_signals
+              WHERE trust_score IS NOT NULL
+              GROUP BY dimension
+            `),
+            appkit.lakebase.query(`
+              WITH facility_scores AS (${facilityScoresSql})
+              SELECT
+                facility_type AS type,
+                COUNT(*)::int AS count,
+                COALESCE(SUM(has_contradiction), 0)::int AS contradictions
+              FROM facility_scores
+              WHERE facility_type IS NOT NULL
+              GROUP BY facility_type
+              ORDER BY count DESC, type
+              LIMIT 8
+            `),
+            appkit.lakebase.query(`
+              WITH facility_scores AS (${facilityScoresSql})
+              SELECT
+                facility_id,
+                facility_name,
+                state,
+                facility_type,
+                score::text AS overall_trust_score,
+                has_contradiction,
+                signal_count,
+                ROUND(score::numeric * 100)::int AS score
+              FROM facility_scores
+              WHERE score IS NOT NULL
+              ORDER BY score DESC, facility_name
+              LIMIT 3
+            `),
+            appkit.lakebase.query(`
+              WITH facility_scores AS (${facilityScoresSql})
+              SELECT
+                facility_id,
+                facility_name,
+                state,
+                facility_type,
+                score::text AS overall_trust_score,
+                has_contradiction,
+                signal_count,
+                ROUND(score::numeric * 100)::int AS score
+              FROM facility_scores
+              WHERE score IS NOT NULL
+              ORDER BY score ASC, facility_name
+              LIMIT 3
+            `),
+            appkit.lakebase.query(`
+              WITH latest AS (
+                SELECT DISTINCT ON (facility_id, action_type, COALESCE(dimension, ''))
+                  facility_id, action_type, dimension, content, updated_at
+                FROM facilityiq.user_actions
+                WHERE analyst_id = $1
+                ORDER BY facility_id, action_type, COALESCE(dimension, ''), updated_at DESC
+              )
+              SELECT
+                COUNT(DISTINCT CASE WHEN action_type = 'shortlist' AND content = 'added' THEN facility_id END)::int AS shortlisted_count,
+                COUNT(DISTINCT CASE WHEN action_type = 'flag' AND content = 'flagged' THEN facility_id END)::int AS flagged_count
+              FROM latest
+            `, [analystId]),
+          ]);
+
+          const summaryRow = sqlResultRows(summary)[0];
+          const tierRow = sqlResultRows(tiers)[0];
+          const actionRow = sqlResultRows(actions)[0];
+          const dimRows = new Map(
+            sqlResultRows(dims).map((row) => [stringField(row, 'dim'), nullableNumberField(row, 'avg')]),
+          );
+          const distributionRows = sqlResultRows(distribution).map((row) => ({
+            label: stringField(row, 'label') ?? '',
+            count: numberField(row, 'count'),
+            tier: dashboardTier(row.tier),
+          }));
+          const typeRows = sqlResultRows(types).map((row) => ({
+            type: stringField(row, 'type') ?? 'Unknown',
+            count: numberField(row, 'count'),
+            contradictions: numberField(row, 'contradictions'),
+          }));
+          const facilityRows = (rows: unknown) => sqlResultRows(rows).map((row) => ({
+            facility_id: stringField(row, 'facility_id') ?? '',
+            facility_name: stringField(row, 'facility_name') ?? '',
+            state: stringField(row, 'state'),
+            facility_type: stringField(row, 'facility_type'),
+            overall_trust_score: stringField(row, 'overall_trust_score'),
+            has_contradiction: numberField(row, 'has_contradiction'),
+            signal_count: numberField(row, 'signal_count'),
+            score: nullableNumberField(row, 'score'),
+          }));
+
+          res.json({
+            total: numberField(summaryRow, 'total'),
+            contradictionCount: numberField(summaryRow, 'contradiction_count'),
+            avgScore: nullableNumberField(summaryRow, 'avg_score'),
+            distribution: distributionRows,
+            tierData: [
+              { name: 'High >=70', value: numberField(tierRow, 'high_count'), tier: 'high' },
+              { name: 'Med 40-69', value: numberField(tierRow, 'med_count'), tier: 'med' },
+              { name: 'Low <40', value: numberField(tierRow, 'low_count'), tier: 'low' },
+              { name: 'Insuff. data', value: numberField(tierRow, 'insuff_count'), tier: 'insuff' },
+            ],
+            dimAvgs: TRUST_DIMENSIONS.map((dim) => ({ dim, avg: dimRows.get(dim) ?? null })),
+            typeBreakdown: typeRows,
+            top3: facilityRows(top),
+            bottom3: facilityRows(bottom),
+            shortlistedCount: numberField(actionRow, 'shortlisted_count'),
+            flaggedCount: numberField(actionRow, 'flagged_count'),
+          });
+        } catch (err) {
+          console.error('Failed to fetch dashboard:', err);
+          res.status(500).json({ error: 'Failed to fetch dashboard' });
+        }
+      });
 
       // GET /api/dashboard/stats — summary metrics for tour dynamic copy
       app.get('/api/dashboard/stats', async (_req, res) => {
