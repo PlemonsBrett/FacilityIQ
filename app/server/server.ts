@@ -1105,9 +1105,9 @@ RULES:
             facility[target] = row.new_value;
           }
 
-          const messages = [
+          const messages: { role: 'user' | 'assistant'; content: string }[] = [
             {
-              role: 'system',
+              role: 'user' as const,
               content: `You are a healthcare facility data analyst. Evaluate a facility record and assess trustworthiness of its claims.
 
 RULES:
@@ -1115,9 +1115,10 @@ RULES:
 - Return "insufficient_data" confidence_tier if evidence is absent or field coverage is too low.
 - capacity and year_established ALWAYS get confidence_tier "insufficient_data" and trust_score null — no exceptions.
 - Flag contradictions where a structured field directly conflicts with free text.
-- Respond ONLY with valid JSON. No markdown fences, no preamble.`,
+- Respond ONLY with valid JSON. No markdown fences, no preamble.
+
+${buildTrustPrompt(facility)}`,
             },
-            { role: 'user', content: buildTrustPrompt(facility) },
           ];
 
           async function invokeModel(alias: 'llm' | 'fallback', model: string) {
