@@ -36,8 +36,8 @@ export default function App({ splashDone }: Props) {
   // Fetch dashboard stats for dynamic tour copy; fail gracefully so tour still works
   useEffect(() => {
     fetch("/api/dashboard/stats")
-      .then((r) => r.json())
-      .then((data: DashboardStats) => { setDashStats(data); setStatsLoaded(true); })
+      .then((r) => r.ok ? r.json() : null)
+      .then((data: DashboardStats | null) => { if (data?.total_facilities != null) setDashStats(data); setStatsLoaded(true); })
       .catch(() => setStatsLoaded(true));
   }, []);
 

@@ -64,9 +64,9 @@ const WelcomeContent = () => (
 // ── Step builder ──────────────────────────────────────────────────────────────
 
 export function buildTourSteps(stats?: DashboardStats | null): TourStep[] {
-  const total = stats ? stats.total_facilities.toLocaleString() : "10,000";
-  const contradictions = stats ? stats.contradiction_count.toLocaleString() : "hundreds of";
-  const highFrac = stats ? fraction(stats.high_trust_pct) : "roughly a third";
+  const total = stats?.total_facilities != null ? stats.total_facilities.toLocaleString() : "10,000";
+  const contradictions = stats?.contradiction_count != null ? stats.contradiction_count.toLocaleString() : "hundreds of";
+  const highFrac = stats?.high_trust_pct != null ? fraction(stats.high_trust_pct) : "roughly a third";
   const topDim = dimLabel(stats?.top_dimension ?? null);
   const bottomDim = dimLabel(stats?.bottom_dimension ?? null);
   const highContraType = typeLabel(stats?.highest_contradiction_type ?? null);
