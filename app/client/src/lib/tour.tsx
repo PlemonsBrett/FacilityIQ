@@ -50,7 +50,7 @@ function typeLabel(t: string | null): string {
 const WelcomeContent = () => (
   <div style={{ textAlign: "center", padding: "4px 0 8px" }}>
     <img
-      src="/facilityiq-logo.png"
+      src={`${import.meta.env.BASE_URL}facilityiq-logo.png`}
       alt="FacilityIQ"
       style={{ width: 220, borderRadius: 12, display: "block", margin: "0 auto 14px" }}
     />

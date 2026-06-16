@@ -18,8 +18,8 @@ import { useEffect, useRef, useState, type CSSProperties } from "react";
 
 const DURATION_MS = 15_000; // hard cap per requirements
 const FADE_MS = 600;
-const AUDIO_SRC = "/splash.mp3";
-const LOGO_SRC = "/facilityiq-logo.png";
+const AUDIO_SRC = `${import.meta.env.BASE_URL}splash.mp3`;
+const LOGO_SRC = `${import.meta.env.BASE_URL}facilityiq-logo.png`;
 
 // Brand palette (from the story doc): deep sapphire core + pink / cyan / gold accents.
 const COLORS = ["#FF4D8D", "#5FD3E3", "#FFD24A"];
