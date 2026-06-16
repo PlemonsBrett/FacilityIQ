@@ -1,9 +1,21 @@
-import { createApp, lakebase, server, serving } from '@databricks/appkit';
+import { analytics, createApp, lakebase, server, serving, sql } from '@databricks/appkit';
 import { z } from 'zod';
 
 const MODEL = 'databricks-meta-llama-3-3-70b-instruct';
 const FALLBACK_MODEL = 'databricks-meta-llama-3-1-8b-instruct';
 const TRUST_DIMENSIONS = ['capability', 'equipment', 'procedure', 'completeness'] as const;
+const CLEANUP_FIELDS = [
+  'name',
+  'facility_type_id',
+  'address_city',
+  'address_state_or_region',
+  'description',
+  'capability',
+  'equipment',
+  'procedure',
+  'capacity',
+  'year_established',
+] as const;
 
 const adjustedTrustScoreSql = `
   CASE
@@ -37,6 +49,99 @@ const trustSignalSchema = z.object({
   contradiction: z.boolean(),
   contradiction_detail: z.string().nullable(),
 });
+
+const cleanupSuggestionSchema = z.object({
+  field_name: z.enum(CLEANUP_FIELDS),
+  current_value: z.string().nullable(),
+  suggested_value: z.string().min(1),
+  reason: z.string().min(1),
+  confidence: z.enum(['high', 'medium', 'low']),
+});
+
+const cleanupResponseSchema = z.object({
+  suggestions: z.array(cleanupSuggestionSchema),
+});
+
+function stringifyValue(value: unknown): string | null {
+  if (value === null || value === undefined || value === '') return null;
+  return typeof value === 'string' ? value : JSON.stringify(value);
+}
+
+function sqlResultRows(result: unknown): Array<Record<string, unknown>> {
+  const maybeRows = (result as { rows?: Array<Record<string, unknown>> })?.rows;
+  if (Array.isArray(maybeRows)) return maybeRows;
+
+  const payload = result as {
+    data_array?: unknown[][];
+    schema?: { columns?: Array<{ name?: string }> };
+    manifest?: { schema?: { columns?: Array<{ name?: string }> } };
+  };
+  const data = payload.data_array;
+  const columns = payload.schema?.columns ?? payload.manifest?.schema?.columns ?? [];
+  if (!Array.isArray(data) || columns.length === 0) return [];
+  return data.map((row) => {
+    const out: Record<string, unknown> = {};
+    columns.forEach((col, idx) => {
+      if (col.name) out[col.name] = row[idx];
+    });
+    return out;
+  });
+}
+
+function buildCleanupPrompt(current: Record<string, unknown>, bronze: Record<string, unknown>): string {
+  const compact = (row: Record<string, unknown>) => JSON.stringify(row, (_key, value) => {
+    if (typeof value === 'string' && value.length > 2500) return `${value.slice(0, 2500)}...`;
+    return value;
+  }, 2);
+
+  return `Use the bronze/raw record to suggest cleanup edits for the current healthcare facility record.
+
+Only suggest edits when the bronze/raw data clearly supports a better normalized value.
+Do not invent phone, email, website, address, capacity, or year values.
+Prefer concise human-readable values. Remove obvious JSON escaping noise, duplicate fragments, empty strings, irrelevant unrelated facilities, and camelCase specialty tokens when they are being used as display text.
+For arrays in bronze fields, summarize into readable comma-separated text only if the current field is messy or blank.
+
+Allowed field_name values:
+${CLEANUP_FIELDS.map((field) => `- ${field}`).join('\n')}
+
+Current app record:
+${compact(current)}
+
+Bronze/raw record:
+${compact(bronze)}
+
+Return this exact JSON (no markdown, no extra keys):
+{
+  "suggestions": [
+    {
+      "field_name": "<one allowed field_name>",
+      "current_value": "<current value or null>",
+      "suggested_value": "<replacement value>",
+      "reason": "<short reason grounded in bronze/raw data>",
+      "confidence": "<high|medium|low>"
+    }
+  ]
+}`;
+}
+
+function normalizeCleanupSuggestions(raw: unknown) {
+  const parsed = cleanupResponseSchema.parse(raw);
+  const seen = new Set<string>();
+  return parsed.suggestions
+    .filter((suggestion) => {
+      const value = suggestion.suggested_value.trim();
+      if (!value || seen.has(suggestion.field_name)) return false;
+      seen.add(suggestion.field_name);
+      return value !== (suggestion.current_value ?? '').trim();
+    })
+    .map((suggestion) => ({
+      ...suggestion,
+      suggested_value: suggestion.suggested_value.trim(),
+      current_value: suggestion.current_value?.trim() || null,
+      reason: suggestion.reason.trim(),
+    }))
+    .slice(0, 8);
+}
 
 function buildTrustPrompt(facility: Record<string, unknown>): string {
   const value = (key: string, fallback = 'N/A') => {
@@ -169,6 +274,7 @@ function adjustedScoreFromSignals(
 createApp({
   plugins: [
     lakebase(),
+    analytics({}),
     server(),
     serving({
       endpoints: {
