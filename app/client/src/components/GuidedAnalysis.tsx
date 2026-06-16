@@ -1,10 +1,10 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { Pencil } from "lucide-react";
-import type { FacilityDetail, ReviewStatus, TrustSignal } from "../types";
+import type { CleanupSuggestion, FacilityDetail, ReviewStatus, TrustSignal } from "../types";
 import { overallScore, scoreToInt, trustColor, trustLabel } from "../types";
 import Workbench from "./Workbench";
-import { postAction, fetchReviewStatus, postReviewStatus, fetchFieldOverrides, postFieldOverride, rerunTrustScore } from "../lib/api";
+import { postAction, fetchReviewStatus, postReviewStatus, fetchFieldOverrides, postFieldOverride, rerunTrustScore, fetchCleanupSuggestions } from "../lib/api";
 
 // ── Review status config ──────────────────────────────────────────────────────
 
@@ -15,6 +15,19 @@ const REVIEW_STATUS_CONFIG: Record<ReviewStatus, { label: string; color: string 
   called:              { label: "Called",       color: "#fb923c" },
   parked:              { label: "Parked",       color: "#64748b" },
   validation_complete: { label: "Validated",    color: "#4ade80" },
+};
+
+const FIELD_LABELS: Record<string, string> = {
+  name: "Facility Name",
+  facility_type_id: "Facility Type",
+  address_city: "City",
+  address_state_or_region: "State",
+  description: "Description",
+  capability: "Capability",
+  equipment: "Equipment",
+  procedure: "Procedure",
+  capacity: "Bed Capacity",
+  year_established: "Year Established",
 };
 
 // ── Local types ───────────────────────────────────────────────────────────────
@@ -570,6 +583,164 @@ function EditFieldModal({
   );
 }
 
+// ── CleanupSuggestionsModal ───────────────────────────────────────────────────
+
+function CleanupSuggestionsModal({
+  suggestions,
+  loading,
+  error,
+  onApply,
+  onClose,
+}: {
+  suggestions: CleanupSuggestion[];
+  loading: boolean;
+  error: string | null;
+  onApply: (suggestions: CleanupSuggestion[]) => Promise<void>;
+  onClose: () => void;
+}) {
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [applying, setApplying] = useState(false);
+
+  useEffect(() => {
+    setSelected(new Set(suggestions.map((s) => s.field_name)));
+  }, [suggestions]);
+
+  const selectedSuggestions = suggestions.filter((s) => selected.has(s.field_name));
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center"
+      style={{ background: "rgba(0,0,0,0.5)" }}
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div
+        className="w-full max-w-2xl mx-4 rounded-2xl p-6 shadow-2xl max-h-[82vh] overflow-y-auto"
+        style={{ background: "var(--fiq-bg-surface)", border: "1px solid var(--fiq-border)" }}
+      >
+        <div className="flex items-start justify-between gap-3 mb-4">
+          <div>
+            <h3 className="font-semibold text-sm mb-1" style={{ color: "var(--fiq-text)" }}>
+              Bronze Cleanup Suggestions
+            </h3>
+            <p className="text-xs" style={{ color: "var(--fiq-text-faintest)" }}>
+              Review suggested field edits before applying them.
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-xs font-semibold px-3 py-1.5 rounded-lg border"
+            style={{ borderColor: "var(--fiq-border)", color: "var(--fiq-text-faintest)" }}
+          >
+            Close
+          </button>
+        </div>
+
+        {loading && (
+          <div className="text-sm py-8 text-center" style={{ color: "var(--fiq-text-faintest)" }}>
+            Looking up bronze data and asking the LLM...
+          </div>
+        )}
+
+        {!loading && error && (
+          <div className="rounded-xl px-4 py-3 text-sm" style={{ color: "var(--fiq-trust-low)", background: "rgba(220,38,38,0.08)", border: "1px solid rgba(220,38,38,0.25)" }}>
+            {error}
+          </div>
+        )}
+
+        {!loading && !error && suggestions.length === 0 && (
+          <div className="text-sm py-8 text-center" style={{ color: "var(--fiq-text-faintest)" }}>
+            No cleanup edits were suggested for this facility.
+          </div>
+        )}
+
+        {!loading && !error && suggestions.length > 0 && (
+          <>
+            <div className="flex flex-col gap-3">
+              {suggestions.map((suggestion) => (
+                <label
+                  key={suggestion.field_name}
+                  className="block rounded-xl p-4 cursor-pointer"
+                  style={{ background: "var(--fiq-bg-input)", border: "1px solid var(--fiq-border)" }}
+                >
+                  <div className="flex items-start gap-3">
+                    <input
+                      type="checkbox"
+                      checked={selected.has(suggestion.field_name)}
+                      onChange={(e) => {
+                        setSelected((prev) => {
+                          const next = new Set(prev);
+                          if (e.target.checked) next.add(suggestion.field_name);
+                          else next.delete(suggestion.field_name);
+                          return next;
+                        });
+                      }}
+                      className="mt-1"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 mb-2 flex-wrap">
+                        <span className="text-xs font-bold" style={{ color: "var(--fiq-text)" }}>
+                          {FIELD_LABELS[suggestion.field_name] ?? suggestion.field_name}
+                        </span>
+                        <span
+                          className="text-[9px] font-bold uppercase px-2 py-0.5 rounded-full"
+                          style={{ color: "var(--fiq-text-code)", background: "var(--fiq-bg-surface)", border: "1px solid var(--fiq-border)" }}
+                        >
+                          {suggestion.confidence}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                        <div>
+                          <div className="font-semibold mb-1" style={{ color: "var(--fiq-text-faintest)" }}>Current</div>
+                          <div className="break-words" style={{ color: "var(--fiq-text-muted)" }}>
+                            {suggestion.current_value || "Not provided"}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="font-semibold mb-1" style={{ color: "var(--fiq-text-faintest)" }}>Suggested</div>
+                          <div className="break-words" style={{ color: "var(--fiq-text)" }}>
+                            {suggestion.suggested_value}
+                          </div>
+                        </div>
+                      </div>
+                      <p className="text-xs mt-3" style={{ color: "var(--fiq-text-subdued)" }}>
+                        {suggestion.reason}
+                      </p>
+                    </div>
+                  </div>
+                </label>
+              ))}
+            </div>
+
+            <div className="flex justify-end gap-2 mt-5">
+              <button
+                onClick={onClose}
+                className="px-4 py-1.5 text-xs font-semibold rounded-lg border"
+                style={{ borderColor: "var(--fiq-border)", color: "var(--fiq-text-faintest)" }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  if (selectedSuggestions.length === 0) return;
+                  setApplying(true);
+                  await onApply(selectedSuggestions);
+                  setApplying(false);
+                }}
+                disabled={selectedSuggestions.length === 0 || applying}
+                className="px-4 py-1.5 text-xs font-semibold rounded-lg disabled:opacity-40"
+                style={{ background: "var(--fiq-text)", color: "var(--fiq-bg)" }}
+              >
+                {applying ? "Applying..." : `Apply Selected (${selectedSuggestions.length})`}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
 // ── FlagModal ─────────────────────────────────────────────────────────────────
 
 function FlagModal({
@@ -793,6 +964,10 @@ export default function GuidedAnalysis({ detail, analystId }: Props) {
   const [overrideDim, setOverrideDim] = useState<string | null>(null);
   const [editingField, setEditingField] = useState<{ label: string; fieldName: string; value: string } | null>(null);
   const [localOverrides, setLocalOverrides] = useState<Record<string, string>>({});
+  const [cleanupOpen, setCleanupOpen] = useState(false);
+  const [cleanupSuggestions, setCleanupSuggestions] = useState<CleanupSuggestion[]>([]);
+  const [cleanupLoading, setCleanupLoading] = useState(false);
+  const [cleanupError, setCleanupError] = useState<string | null>(null);
 
   const [reviewStatus, setReviewStatus] = useState<ReviewStatus>("not_started");
   const [_reviewParkedReason, setReviewParkedReason] = useState<string | null>(null);
@@ -806,6 +981,9 @@ export default function GuidedAnalysis({ detail, analystId }: Props) {
     setActiveTrustSignals(trust_signals);
     setRerunOverall(null);
     setRerunState("idle");
+    setCleanupOpen(false);
+    setCleanupSuggestions([]);
+    setCleanupError(null);
   }, [facility.facility_id, trust_signals]);
 
   useEffect(() => {
@@ -896,6 +1074,41 @@ export default function GuidedAnalysis({ detail, analystId }: Props) {
   }
 
   const nextRerunReason = reviewStatus === "validation_complete" ? "verified" : lastRerunReason;
+
+  async function handleOpenCleanup() {
+    setCleanupOpen(true);
+    setCleanupLoading(true);
+    setCleanupError(null);
+    setCleanupSuggestions([]);
+    const result = await fetchCleanupSuggestions(facility.facility_id, analystId);
+    if (!result) {
+      setCleanupError("Cleanup suggestion lookup failed.");
+      setCleanupLoading(false);
+      return;
+    }
+    setCleanupSuggestions(result.suggestions);
+    setCleanupLoading(false);
+  }
+
+  async function handleApplyCleanupSuggestions(suggestions: CleanupSuggestion[]) {
+    for (const suggestion of suggestions) {
+      await postFieldOverride(
+        facility.facility_id,
+        suggestion.field_name,
+        suggestion.suggested_value,
+        analystId,
+        `LLM cleanup from bronze: ${suggestion.reason}`,
+      );
+    }
+    setLocalOverrides((prev) => {
+      const next = { ...prev };
+      for (const suggestion of suggestions) next[suggestion.field_name] = suggestion.suggested_value;
+      return next;
+    });
+    setCleanupOpen(false);
+    setRerunState("idle");
+    setLastRerunReason("edited");
+  }
 
   const grouped = useMemo(() => {
     const map = new Map<string, FacilityField[]>([
@@ -1140,15 +1353,25 @@ export default function GuidedAnalysis({ detail, analystId }: Props) {
                 Hover highlighted text to read evidence
               </span>
             </div>
-            <button
-              onClick={() => setShowAll((v) => !v)}
-              className={`flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full border transition-all duration-150 ${
-                showAll ? "bg-indigo-600 text-white border-indigo-600" : "text-indigo-500 border-indigo-300 hover:border-indigo-500"
-              }`}
-              style={showAll ? {} : { background: "var(--fiq-bg-surface)" }}
-            >
-              {showAll ? "◉ Hide evidence" : "◈ Show all evidence"}
-            </button>
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                onClick={handleOpenCleanup}
+                disabled={cleanupLoading}
+                className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full border transition-opacity disabled:opacity-50"
+                style={{ background: "var(--fiq-bg-surface)", color: "var(--fiq-text)", borderColor: "var(--fiq-border)" }}
+              >
+                {cleanupLoading ? "Cleaning..." : "Clean Up with LLM"}
+              </button>
+              <button
+                onClick={() => setShowAll((v) => !v)}
+                className={`flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full border transition-all duration-150 ${
+                  showAll ? "bg-indigo-600 text-white border-indigo-600" : "text-indigo-500 border-indigo-300 hover:border-indigo-500"
+                }`}
+                style={showAll ? {} : { background: "var(--fiq-bg-surface)" }}
+              >
+                {showAll ? "◉ Hide evidence" : "◈ Show all evidence"}
+              </button>
+            </div>
           </div>
 
           {CATEGORY_ORDER.map((cat) => (
@@ -1186,6 +1409,15 @@ export default function GuidedAnalysis({ detail, analystId }: Props) {
             setLastRerunReason("edited");
           }}
           onClose={() => setEditingField(null)}
+        />
+      )}
+      {cleanupOpen && (
+        <CleanupSuggestionsModal
+          suggestions={cleanupSuggestions}
+          loading={cleanupLoading}
+          error={cleanupError}
+          onApply={handleApplyCleanupSuggestions}
+          onClose={() => setCleanupOpen(false)}
         />
       )}
       {parkingFromStatus && (

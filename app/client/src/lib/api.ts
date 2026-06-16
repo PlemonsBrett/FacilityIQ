@@ -1,4 +1,4 @@
-import type { FacilityListItem, FacilityDetail, UserAction, ReviewCard, ReviewStatus, FieldOverride, TrustRerunResult } from "../types";
+import type { FacilityListItem, FacilityDetail, UserAction, ReviewCard, ReviewStatus, FieldOverride, TrustRerunResult, CleanupSuggestionResult } from "../types";
 import {
   filterDummyList,
   DUMMY_DETAILS,
@@ -178,6 +178,17 @@ export async function rerunTrustScore(
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ analyst_id: analystId, reason }),
+  });
+}
+
+export async function fetchCleanupSuggestions(
+  facilityId: string,
+  analystId: string,
+): Promise<CleanupSuggestionResult | null> {
+  return tryFetch<CleanupSuggestionResult>(`/api/facilities/${facilityId}/cleanup-suggestions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ analyst_id: analystId }),
   });
 }
 

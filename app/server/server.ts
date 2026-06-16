@@ -695,6 +695,153 @@ createApp({
         }
       });
 
+      // POST /api/facilities/:id/cleanup-suggestions — use bronze/raw UC data to suggest field edits
+      app.post('/api/facilities/:id/cleanup-suggestions', async (req, res) => {
+        try {
+          const { id } = req.params;
+          const schema = z.object({
+            analyst_id: z.string().min(1),
+          });
+          const parsed = schema.safeParse(req.body ?? {});
+          if (!parsed.success) {
+            res.status(400).json({ error: parsed.error.flatten() });
+            return;
+          }
+
+          const [currentResult, overridesResult, bronzeResult] = await Promise.all([
+            appkit.lakebase.query(`
+              SELECT
+                f.unique_id AS facility_id,
+                f.name,
+                f.facility_type_id,
+                f.address_city,
+                f.address_state_or_region,
+                f.description,
+                f.capability,
+                f.equipment,
+                f.procedure,
+                f.capacity,
+                f.year_established
+              FROM public.facilities f
+              WHERE f.unique_id = $1
+            `, [id]),
+            appkit.lakebase.query(`
+              SELECT DISTINCT ON (field_name) field_name, new_value
+              FROM facilityiq.facilities_overrides
+              WHERE facility_id = $1
+              ORDER BY field_name, updated_at DESC
+            `, [id]),
+            appkit.analytics.asUser(req).query(`
+              SELECT
+                facility_id,
+                facility_name,
+                facility_type,
+                state,
+                district,
+                description,
+                capability,
+                procedure,
+                equipment,
+                capacity,
+                year_established,
+                latitude,
+                longitude,
+                specialties
+              FROM workspace.facilityiq.facilities_raw
+              WHERE facility_id = :facility_id
+              LIMIT 1
+            `, { facility_id: sql.string(id) }),
+          ]);
+
+          if (currentResult.rows.length === 0) {
+            res.status(404).json({ error: 'Facility not found' });
+            return;
+          }
+
+          const bronzeRows = sqlResultRows(bronzeResult);
+          if (bronzeRows.length === 0) {
+            res.status(404).json({ error: 'Bronze facility row not found' });
+            return;
+          }
+
+          const current = { ...(currentResult.rows[0] as Record<string, unknown>) };
+          for (const row of overridesResult.rows as Array<{ field_name: string; new_value: string }>) {
+            current[row.field_name] = row.new_value;
+          }
+
+          const bronzeRaw = bronzeRows[0];
+          const bronze = {
+            facility_id: bronzeRaw.facility_id,
+            name: bronzeRaw.facility_name,
+            facility_type_id: bronzeRaw.facility_type,
+            address_city: bronzeRaw.district,
+            address_state_or_region: bronzeRaw.state,
+            description: bronzeRaw.description,
+            capability: bronzeRaw.capability,
+            procedure: bronzeRaw.procedure,
+            equipment: bronzeRaw.equipment,
+            capacity: bronzeRaw.capacity,
+            year_established: bronzeRaw.year_established,
+            latitude: bronzeRaw.latitude,
+            longitude: bronzeRaw.longitude,
+            specialties: bronzeRaw.specialties,
+          };
+
+          const messages = [
+            {
+              role: 'system',
+              content: `You are a healthcare facility data cleaning assistant.
+
+RULES:
+- Return only valid JSON.
+- Suggest conservative field-level edits only when the bronze/raw row clearly supports them.
+- Do not fabricate missing contact information, addresses, capacity, year, or clinical claims.
+- Keep suggestions concise and analyst-readable.
+- Do not suggest values that are identical to the current value.`,
+            },
+            { role: 'user', content: buildCleanupPrompt(current, bronze) },
+          ];
+
+          async function invokeCleanupModel(alias: 'llm' | 'fallback', model: string) {
+            const result = await appkit.serving(alias).asUser(req).invoke({
+              messages,
+              temperature: 0.0,
+              max_tokens: 1400,
+            });
+            const maybeExecution = result as { ok?: boolean; status?: number; message?: string; data?: unknown };
+            if (maybeExecution.ok === false) {
+              throw new Error(maybeExecution.message ?? `Model invocation failed with ${maybeExecution.status}`);
+            }
+            const data = maybeExecution.ok === true ? maybeExecution.data : result;
+            const content = (data as { choices?: Array<{ message?: { content?: string } }> })
+              ?.choices?.[0]?.message?.content;
+            if (!content) throw new Error(`${model} returned no message content`);
+            return { model, suggestions: normalizeCleanupSuggestions(extractJsonObject(content)) };
+          }
+
+          let cleaned: { model: string; suggestions: ReturnType<typeof normalizeCleanupSuggestions> };
+          try {
+            cleaned = await invokeCleanupModel('llm', MODEL);
+          } catch (primaryErr) {
+            console.warn('[facilityiq] Primary cleanup model failed:', (primaryErr as Error).message);
+            cleaned = await invokeCleanupModel('fallback', FALLBACK_MODEL);
+          }
+
+          res.status(201).json({
+            facility_id: id,
+            extraction_model: cleaned.model,
+            source: 'workspace.facilityiq.facilities_raw',
+            suggestions: cleaned.suggestions.map((suggestion) => ({
+              ...suggestion,
+              current_value: suggestion.current_value ?? stringifyValue(current[suggestion.field_name]),
+            })),
+          });
+        } catch (err) {
+          console.error('Failed to generate cleanup suggestions:', err);
+          res.status(500).json({ error: (err as Error).message || 'Failed to generate cleanup suggestions' });
+        }
+      });
+
       // POST /api/facilities/:id/rerun-trust — refresh trust dimensions from current edited data
       app.post('/api/facilities/:id/rerun-trust', async (req, res) => {
         try {

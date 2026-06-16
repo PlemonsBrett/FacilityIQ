@@ -17,10 +17,15 @@ resources:
       source_code_path: ./
       # Needed for app-layer trust-score reruns against Foundation Model serving endpoints.
       user_api_scopes:
+        - sql
         - serving.serving-endpoints
 
       # The resources which this app has access to.
       resources:
+        - name: sql-warehouse
+          sql_warehouse:
+            id: a4e1c80a2e8ea399
+            permission: CAN_USE
         - name: postgres
           postgres:
             branch: ${var.postgres_branch}

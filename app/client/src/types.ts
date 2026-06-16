@@ -29,6 +29,21 @@ export interface TrustRerunResult {
   trust_signals: TrustSignal[];
 }
 
+export interface CleanupSuggestion {
+  field_name: string;
+  current_value: string | null;
+  suggested_value: string;
+  reason: string;
+  confidence: "high" | "medium" | "low";
+}
+
+export interface CleanupSuggestionResult {
+  facility_id: string;
+  extraction_model: string;
+  source: string;
+  suggestions: CleanupSuggestion[];
+}
+
 export interface FacilityDetail {
   facility: {
     facility_id: string;
