@@ -552,12 +552,29 @@ interface LocalReviewEntry {
   updated_at: string;
 }
 
+// Pre-seeded demo state so the board has cards in every column from the start.
+// fac-007 (Narayana Health City) stays in not_started for the guided tour flow.
+const DEMO_KANBAN_SEED: Record<string, LocalReviewEntry> = {
+  "fac-001": { status: "in_progress",         parked_reason: null, notes: "High-trust hospital — checking equipment claims against recent reports.", updated_at: "2026-06-15T09:14:00Z" },
+  "fac-002": { status: "in_progress",         parked_reason: null, notes: null, updated_at: "2026-06-15T11:02:00Z" },
+  "fac-003": { status: "email_sent",          parked_reason: null, notes: "Bed count contradiction flagged — asked facility for clarification.", updated_at: "2026-06-15T13:30:00Z" },
+  "fac-004": { status: "email_sent",          parked_reason: null, notes: null, updated_at: "2026-06-15T14:05:00Z" },
+  "fac-005": { status: "parked",              parked_reason: "No valid contact info — phone and email both invalid.", notes: null, updated_at: "2026-06-14T16:20:00Z" },
+  "fac-006": { status: "called",              parked_reason: null, notes: "Spoke with admin — confirmed AIIMS status. Awaiting written verification.", updated_at: "2026-06-15T10:45:00Z" },
+  "fac-009": { status: "called",              parked_reason: null, notes: null, updated_at: "2026-06-15T15:00:00Z" },
+  "fac-011": { status: "validation_complete", parked_reason: null, notes: "All four dimensions verified against public records.", updated_at: "2026-06-14T17:00:00Z" },
+  "fac-012": { status: "validation_complete", parked_reason: null, notes: null, updated_at: "2026-06-14T17:30:00Z" },
+  "fac-013": { status: "validation_complete", parked_reason: null, notes: "Ophthalmology claims fully corroborated.", updated_at: "2026-06-14T18:00:00Z" },
+};
+
 function getLocalKanbanBoard(): Record<string, LocalReviewEntry> {
   try {
     const raw = localStorage.getItem(KANBAN_LS_KEY);
-    return raw ? (JSON.parse(raw) as Record<string, LocalReviewEntry>) : {};
+    // Merge seed with any user-made changes so the demo board is never empty
+    const userBoard = raw ? (JSON.parse(raw) as Record<string, LocalReviewEntry>) : {};
+    return { ...DEMO_KANBAN_SEED, ...userBoard };
   } catch {
-    return {};
+    return { ...DEMO_KANBAN_SEED };
   }
 }
 
