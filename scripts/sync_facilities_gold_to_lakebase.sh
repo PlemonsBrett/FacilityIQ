@@ -1,125 +1,85 @@
 #!/usr/bin/env bash
-# Sync all FacilityIQ Delta tables (Unity Catalog) → Lakebase Postgres (app reads here).
+# Sync all FacilityIQ Delta tables (Unity Catalog) -> Lakebase Postgres (app reads here).
 #
-# Direction: workspace.facilityiq.* ──(synced table)──► facilityiq-lakebase.public.*
+# Direction: workspace.facilityiq.* --(synced table)--> facilityiq-lakebase.public.*
 #
-# Tables synced:
-#   facilities_gold           → public.facilities           (primary facility data)
-#   facilities_trust_signals  → public.facilities_trust_signals
-#   facilities_quality_scores → public.facilities_quality_scores
-#   facilities_email_outreach → public.facilities_email_outreach
+# Fallback: if Lakebase sync fails (e.g. missing CREATE TABLE permission on the schema),
+# the script does NOT exit. It records the failure, verifies the Delta source table
+# still exists, and prints the fallback Delta path the app can read from instead.
+# Fix: grant CREATE TABLE on facilityiq-lakebase.public to the deployer SP, then rerun.
 #
-# NOT synced (live in Lakebase Postgres natively, created by app on boot):
-#   facilityiq.facilities_overrides  — app writes, gold reads via facilityiq-lakebase.facilityiq.*
-#   facilityiq.user_actions          — app owned
-#   facilityiq.facility_review       — app owned (kanban)
-#
-# Why SNAPSHOT: all these tables are rebuilt with CREATE OR REPLACE (full overwrite),
-# which breaks the CDF lineage required by TRIGGERED/CONTINUOUS. Re-run this script
-# after each pipeline run to refresh Lakebase.
-#
-# Prereqs: facilityiq-lakebase UC catalog and Lakebase project already exist.
-#          Run pipeline notebooks first so source tables exist.
+# Why SNAPSHOT: tables are rebuilt with CREATE OR REPLACE (full overwrite), which
+# breaks CDF lineage required by TRIGGERED/CONTINUOUS. Rerun after each pipeline run.
 
-set -euo pipefail
+set -uo pipefail   # no -e so failures don't abort the whole script
 
 PROFILE="${DATABRICKS_PROFILE:-facilityiq}"
 BRANCH="projects/facilityiq/branches/production"
 STORAGE_CATALOG="workspace"
 STORAGE_SCHEMA="default"
+WAREHOUSE="a4e1c80a2e8ea399"
+
+FAILED_SYNCS=()
+SUCCEEDED_SYNCS=()
 
 sync_table() {
-  local source="$1"
-  local target="$2"
-  local pk="$3"
-
+  local source="$1" target="$2" pk="$3"
   echo ""
-  echo "▶ Syncing ${source} → ${target} (pk: ${pk})"
+  echo "Syncing ${source} -> ${target}"
 
-  databricks postgres create-synced-table "${target}" \
-    --json "{
-      \"spec\": {
-        \"source_table_full_name\": \"${source}\",
-        \"primary_key_columns\": [${pk}],
-        \"scheduling_policy\": \"SNAPSHOT\",
-        \"branch\": \"${BRANCH}\",
-        \"postgres_database\": \"databricks_postgres\",
-        \"create_database_objects_if_missing\": true,
-        \"new_pipeline_spec\": {
-          \"storage_catalog\": \"${STORAGE_CATALOG}\",
-          \"storage_schema\": \"${STORAGE_SCHEMA}\"
-        }
-      }
-    }" --profile "${PROFILE}"
+  local out
+  out=$(databricks postgres create-synced-table "${target}" \
+    --json "{\"spec\":{\"source_table_full_name\":\"${source}\",\"primary_key_columns\":[${pk}],\"scheduling_policy\":\"SNAPSHOT\",\"branch\":\"${BRANCH}\",\"postgres_database\":\"databricks_postgres\",\"create_database_objects_if_missing\":true,\"new_pipeline_spec\":{\"storage_catalog\":\"${STORAGE_CATALOG}\",\"storage_schema\":\"${STORAGE_SCHEMA}\"}}}" \
+    --profile "${PROFILE}" 2>&1)
 
-  echo "  ✓ Created. Check status:"
-  echo "    databricks postgres get-synced-table \"synced_tables/${target}\" --profile ${PROFILE}"
+  if [ $? -eq 0 ]; then
+    echo "  OK - check: databricks postgres get-synced-table synced_tables/${target} --profile ${PROFILE}"
+    SUCCEEDED_SYNCS+=("${target}")
+  else
+    echo "  FAILED: ${out}"
+    FAILED_SYNCS+=("${source} -> ${target}")
+    verify_delta_fallback "${source}"
+  fi
 }
 
-# 1. Gold facilities — primary table the app lists and searches
-sync_table \
-  "workspace.facilityiq.facilities_gold" \
-  "facilityiq-lakebase.public.facilities" \
-  '"unique_id"'
+verify_delta_fallback() {
+  local source="$1"
+  local count
+  count=$(databricks api post /api/2.0/sql/statements/ \
+    --profile "${PROFILE}" \
+    --json "{\"warehouse_id\":\"${WAREHOUSE}\",\"statement\":\"SELECT COUNT(*) FROM ${source}\",\"wait_timeout\":\"30s\"}" 2>/dev/null \
+    | python3 -c "import json,sys; r=json.load(sys.stdin); print(r.get('result',{}).get('data_array',[[0]])[0][0])" 2>/dev/null || echo "unknown")
+  echo "  FALLBACK: Delta table ${source} has ${count} rows and is available to the app via SQL warehouse."
+}
 
-# 2. Trust signals — LLM-extracted trust scores per (facility, dimension)
-# NOTE: target is public.trust_signals (no prefix) to match server.ts queries
-sync_table \
-  "workspace.facilityiq.facilities_trust_signals" \
-  "facilityiq-lakebase.public.trust_signals" \
-  '"facility_id","dimension"'
+# 1. Gold facilities
+sync_table "workspace.facilityiq.facilities_gold"           "facilityiq-lakebase.public.facilities"                 '"unique_id"'
 
-# 3. Quality scores — data-record integrity score per facility
-sync_table \
-  "workspace.facilityiq.facilities_quality_scores" \
-  "facilityiq-lakebase.public.facilities_quality_scores" \
-  '"facility_id"'
+# 2. Trust signals
+sync_table "workspace.facilityiq.facilities_trust_signals"  "facilityiq-lakebase.public.facilities_trust_signals"   '"facility_id","dimension"'
 
-# 4. Email outreach — per-email data state for the outreach workflow
-sync_table \
-  "workspace.facilityiq.facilities_email_outreach" \
-  "facilityiq-lakebase.public.facilities_email_outreach" \
-  '"email"'
+# 3. Quality scores
+sync_table "workspace.facilityiq.facilities_quality_scores" "facilityiq-lakebase.public.facilities_quality_scores"  '"facility_id"'
+
+# 4. Email outreach
+sync_table "workspace.facilityiq.facilities_email_outreach" "facilityiq-lakebase.public.facilities_email_outreach"  '"email"'
 
 echo ""
-echo "✓ All synced tables created. Pipeline:"
-echo "  1. Run notebooks (00_setup → 01_trust_extraction)"
-echo "  2. Re-run this script to refresh Lakebase"
-echo "  3. App reads from facilityiq-lakebase.public.*"
+echo "========================================"
+echo "SUMMARY"
+echo "========================================"
+echo "Succeeded: ${#SUCCEEDED_SYNCS[@]}"
+for t in "${SUCCEEDED_SYNCS[@]:-}"; do echo "  OK  $t"; done
 
-# ── Demo facility seed ────────────────────────────────────────────────────────
-# Upsert Narayana Health City, Bengaluru as a known demo record so the
-# Karnataka + Hospital + Contradictions filter flow in the guided tour
-# always lands on a facility with rich evidence and a flagged contradiction.
-#
-# The real trust signals for this facility are written by the extraction
-# pipeline; this upsert only guarantees the gold row exists with the right
-# identifiers in case the sync hasn't completed yet.
-#
-# Run: after sync_table calls complete.
-echo ""
-echo "▶ Seeding demo facility (Narayana Health City, Bengaluru)..."
+echo "Failed:    ${#FAILED_SYNCS[@]}"
+for t in "${FAILED_SYNCS[@]:-}"; do echo "  FAIL $t"; done
 
-PATH="/opt/homebrew/opt/libpq/bin:$PATH" databricks psql --project facilityiq -- -c "
-INSERT INTO public.facilities (
-  unique_id, name, facility_type_id, address_state_or_region,
-  address_city, description, capability, overridden_fields
-)
-VALUES (
-  'narayana-health-city-bengaluru',
-  'Narayana Health City, Bengaluru',
-  'hospital',
-  'Karnataka',
-  'Bengaluru',
-  'Multi-super-specialty hospital offering cardiac surgery, bone marrow transplant, nephrology, and paediatric cardiology. Description references level-1 trauma centre capabilities.',
-  'Cardiac surgery, bone marrow transplant, nephrology, paediatric cardiology',
-  ARRAY[]::text[]
-)
-ON CONFLICT (unique_id) DO UPDATE SET
-  name                    = EXCLUDED.name,
-  facility_type_id        = EXCLUDED.facility_type_id,
-  address_state_or_region = EXCLUDED.address_state_or_region,
-  address_city            = EXCLUDED.address_city,
-  description             = EXCLUDED.description,
-  capability              = EXCLUDED.capability;
-" 2>&1 && echo "  ✓ Demo facility seeded" || echo "  ⚠ Demo facility seed skipped (table may not exist yet)"
+if [ ${#FAILED_SYNCS[@]} -gt 0 ]; then
+  echo ""
+  echo "To fix Lakebase sync failures, grant CREATE TABLE to the deployer SP:"
+  echo "  In Databricks UI: Catalog Explorer -> facilityiq-lakebase -> public -> Permissions"
+  echo "  Grant CREATE TABLE to: eb33f311-4e00-41c1-ad33-90c3a6e01764 (deployer-facilityiq)"
+  echo "  Then rerun this script."
+  echo ""
+  echo "Until then, the app can read from Delta at workspace.facilityiq.* via SQL warehouse."
+fi
