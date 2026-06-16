@@ -78,7 +78,7 @@ createApp({
                 COUNT(DISTINCT f.unique_id)::int AS total_facilities,
                 COUNT(DISTINCT CASE WHEN t.contradiction THEN f.unique_id END)::int AS contradiction_count
               FROM public.facilities f
-              LEFT JOIN public.trust_signals t ON f.unique_id = t.facility_id
+              LEFT JOIN public.facilities_trust_signals t ON f.unique_id = t.facility_id
             `),
             appkit.lakebase.query(`
               SELECT
@@ -89,14 +89,14 @@ createApp({
                 COUNT(*)::int AS total
               FROM (
                 SELECT facility_id, AVG(trust_score) AS avg_score
-                FROM public.trust_signals
+                FROM public.facilities_trust_signals
                 WHERE trust_score IS NOT NULL
                 GROUP BY facility_id
               ) x
             `),
             appkit.lakebase.query(`
               SELECT dimension, ROUND(AVG(trust_score)::numeric * 100, 1)::real AS avg_score
-              FROM public.trust_signals
+              FROM public.facilities_trust_signals
               WHERE trust_score IS NOT NULL
               GROUP BY dimension
               ORDER BY avg_score DESC
@@ -106,7 +106,7 @@ createApp({
                 COUNT(DISTINCT f.unique_id)::int AS total,
                 COUNT(DISTINCT CASE WHEN t.contradiction THEN f.unique_id END)::int AS contradictions
               FROM public.facilities f
-              LEFT JOIN public.trust_signals t ON f.unique_id = t.facility_id
+              LEFT JOIN public.facilities_trust_signals t ON f.unique_id = t.facility_id
               WHERE f.facility_type_id IS NOT NULL
               GROUP BY f.facility_type_id
               HAVING COUNT(DISTINCT f.unique_id) > 2
@@ -180,11 +180,10 @@ createApp({
               MAX(CASE WHEN t.contradiction THEN 1 ELSE 0 END)::int AS has_contradiction,
               COUNT(t.dimension)::int              AS signal_count
             FROM public.facilities f
-            LEFT JOIN public.trust_signals t ON f.unique_id = t.facility_id
+            LEFT JOIN public.facilities_trust_signals t ON f.unique_id = t.facility_id
             WHERE ($1::text IS NULL OR
               f.name ILIKE $1 OR
               f.description ILIKE $1 OR
-              f.capability ILIKE $1 OR
               f.address_state_or_region ILIKE $1)
               AND ($2::text = '' OR f.address_state_or_region = $2)
               AND ($3::text = '' OR f.facility_type_id = $3)
@@ -215,9 +214,6 @@ createApp({
                       address_state_or_region      AS state,
                       address_city                 AS district,
                       description,
-                      capability,
-                      procedure,
-                      equipment,
                       capacity,
                       year_established,
                       number_doctors,
@@ -228,7 +224,7 @@ createApp({
                       overridden_fields
                FROM public.facilities WHERE unique_id = $1`, [id]),
             appkit.lakebase.query(
-              `SELECT * FROM public.trust_signals
+              `SELECT * FROM public.facilities_trust_signals
                WHERE facility_id = $1 ORDER BY dimension`, [id]),
           ]);
           if (fr.rows.length === 0) {
@@ -302,14 +298,15 @@ createApp({
         try {
           const limit = Math.min(Number(req.query.limit ?? 500), 2000);
           const { rows } = await appkit.lakebase.query(`
-            SELECT f.facility_id, f.facility_name, f.facility_type, f.state,
+            SELECT f.unique_id AS facility_id, f.name AS facility_name,
+                   f.facility_type_id AS facility_type, f.address_state_or_region AS state,
                    'not_started' AS status
             FROM public.facilities f
             WHERE NOT EXISTS (
               SELECT 1 FROM facilityiq.facility_review r
-              WHERE r.facility_id = f.facility_id
+              WHERE r.facility_id = f.unique_id
             )
-            ORDER BY f.facility_name
+            ORDER BY f.name
             LIMIT $1
           `, [limit]);
           res.json(rows);
@@ -332,11 +329,12 @@ createApp({
           }
           params.push(limit);
           const { rows } = await appkit.lakebase.query(`
-            SELECT r.facility_id, f.facility_name, f.facility_type, f.state,
+            SELECT r.facility_id, f.name AS facility_name,
+                   f.facility_type_id AS facility_type, f.address_state_or_region AS state,
                    r.status, r.parked_reason, r.assigned_to, r.notes,
                    r.updated_by, r.updated_at
             FROM facilityiq.facility_review r
-            LEFT JOIN public.facilities f ON f.facility_id = r.facility_id
+            LEFT JOIN public.facilities f ON f.unique_id = r.facility_id
             ${where}
             ORDER BY r.updated_at DESC
             LIMIT $${params.length}

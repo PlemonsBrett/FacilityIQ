@@ -109,6 +109,12 @@ function buildFields(detail: FacilityDetail): FacilityField[] {
   const yearStr = facility.year_established?.toString() ?? null;
   const docStr  = facility.number_doctors?.toString() ?? null;
 
+  const sigText = (dim: string) =>
+    trust_signals.find((s) => s.dimension === dim)?.evidence_text ?? null;
+  const capabilityText = facility.capability ?? sigText("capability");
+  const equipmentText  = facility.equipment  ?? sigText("equipment");
+  const procedureText  = facility.procedure  ?? sigText("procedure");
+
   return [
     { label: "Facility Name",    value: facility.facility_name,    category: "Identity" },
     { label: "City",             value: facility.district,         category: "Identity" },
@@ -119,9 +125,9 @@ function buildFields(detail: FacilityDetail): FacilityField[] {
     { label: "Website",          value: facility.official_website, category: "Identity" },
     { label: "Address",          value: facility.address_line1,    category: "Identity" },
     { label: "Description",      value: facility.description,      category: "Identity", highlights: getDescriptionHighlights() },
-    { label: "Capability",       value: facility.capability,       category: "Clinical", highlights: getHighlights("capability", facility.capability) },
-    { label: "Equipment",        value: facility.equipment,        category: "Clinical", highlights: getHighlights("equipment", facility.equipment) },
-    { label: "Procedure",        value: facility.procedure,        category: "Clinical", highlights: getHighlights("procedure", facility.procedure) },
+    { label: "Capability",       value: capabilityText,            category: "Clinical", highlights: getHighlights("capability", capabilityText) },
+    { label: "Equipment",        value: equipmentText,             category: "Clinical", highlights: getHighlights("equipment",  equipmentText) },
+    { label: "Procedure",        value: procedureText,             category: "Clinical", highlights: getHighlights("procedure",  procedureText) },
     { label: "Bed Capacity",     value: capStr,                    category: "Capacity", highlights: getHighlights("capacity", capStr), missing: capStr === null },
     { label: "Doctors",          value: docStr,                    category: "Capacity", missing: docStr === null },
     { label: "Year Established", value: yearStr,                   category: "Capacity", missing: yearStr === null },
