@@ -41,7 +41,7 @@ jobs:
 
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: app/dist
+          path: app/client/dist
 
       - id: deployment
         uses: actions/deploy-pages@v4
