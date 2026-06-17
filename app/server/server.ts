@@ -332,10 +332,9 @@ createApp({
     // Prevents "permission denied" when a prior deploy created them under a different identity.
     // Safe to do on every startup — these tables hold only transient analyst state.
     try {
+      await appkit.lakebase.query(`DROP SCHEMA IF EXISTS facilityiq CASCADE`);
+      await appkit.lakebase.query(`CREATE SCHEMA facilityiq`);
       await appkit.lakebase.query(`
-        DROP SCHEMA IF EXISTS facilityiq CASCADE;
-        CREATE SCHEMA facilityiq;
-
         CREATE TABLE facilityiq.facilities_overrides (
           facility_id  TEXT        NOT NULL,
           field_name   TEXT        NOT NULL,
@@ -343,24 +342,30 @@ createApp({
           analyst_id   TEXT,
           reason       TEXT,
           updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
-        );
+        )
+      `);
+      await appkit.lakebase.query(`
         CREATE INDEX idx_fo_facility_field
-          ON facilityiq.facilities_overrides (facility_id, field_name, updated_at DESC);
-
+          ON facilityiq.facilities_overrides (facility_id, field_name, updated_at DESC)
+      `);
+      await appkit.lakebase.query(`
         CREATE TABLE facilityiq.user_actions (
-          action_id     TEXT PRIMARY KEY,
-          facility_id   TEXT NOT NULL,
-          analyst_id    TEXT NOT NULL,
-          action_type   TEXT NOT NULL CHECK (action_type IN ('note','override','shortlist','flag')),
-          dimension     TEXT,
-          content       TEXT,
+          action_id      TEXT PRIMARY KEY,
+          facility_id    TEXT NOT NULL,
+          analyst_id     TEXT NOT NULL,
+          action_type    TEXT NOT NULL CHECK (action_type IN ('note','override','shortlist','flag')),
+          dimension      TEXT,
+          content        TEXT,
           override_score REAL,
-          created_at    TIMESTAMPTZ DEFAULT NOW(),
-          updated_at    TIMESTAMPTZ DEFAULT NOW()
-        );
+          created_at     TIMESTAMPTZ DEFAULT NOW(),
+          updated_at     TIMESTAMPTZ DEFAULT NOW()
+        )
+      `);
+      await appkit.lakebase.query(`
         CREATE INDEX idx_ua_facility_analyst
-          ON facilityiq.user_actions (facility_id, analyst_id, action_type, updated_at DESC);
-
+          ON facilityiq.user_actions (facility_id, analyst_id, action_type, updated_at DESC)
+      `);
+      await appkit.lakebase.query(`
         CREATE TABLE facilityiq.facility_review (
           facility_id   TEXT PRIMARY KEY,
           status        TEXT NOT NULL DEFAULT 'not_started'
@@ -373,10 +378,13 @@ createApp({
           updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
           CONSTRAINT parked_requires_reason
             CHECK (status <> 'parked' OR parked_reason IS NOT NULL)
-        );
+        )
+      `);
+      await appkit.lakebase.query(`
         CREATE INDEX idx_fr_status
-          ON facilityiq.facility_review (status, updated_at DESC);
-
+          ON facilityiq.facility_review (status, updated_at DESC)
+      `);
+      await appkit.lakebase.query(`
         CREATE TABLE facilityiq.trust_signal_reruns (
           rerun_id             TEXT PRIMARY KEY,
           facility_id          TEXT NOT NULL,
@@ -391,14 +399,16 @@ createApp({
           analyst_id           TEXT,
           extraction_model     TEXT,
           created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW()
-        );
+        )
+      `);
+      await appkit.lakebase.query(`
         CREATE INDEX idx_tsr_latest
-          ON facilityiq.trust_signal_reruns (facility_id, dimension, created_at DESC);
+          ON facilityiq.trust_signal_reruns (facility_id, dimension, created_at DESC)
       `);
       console.log('[facilityiq] Tables ready in facilityiq schema');
     } catch (err) {
-      console.warn('[facilityiq] Schema init failed:', (err as Error).message);
-      console.warn('[facilityiq] Routes will be registered but writes may fail until schema is ready');
+      console.error('[facilityiq] Schema init failed:', (err as Error).message);
+      throw err;
     }
 
     appkit.server.extend((app) => {
@@ -928,7 +938,7 @@ createApp({
               WHERE facility_id = $1
               ORDER BY field_name, updated_at DESC
             `, [id]),
-            appkit.analytics.asUser(req).query(`
+            appkit.analytics.query(`
               SELECT
                 facility_id,
                 facility_name,
