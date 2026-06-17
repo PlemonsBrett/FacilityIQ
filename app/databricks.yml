@@ -1,24 +1,14 @@
 bundle:
   name: facilityiq
 
-variables:
-  postgres_branch:
-    description: Full Lakebase Postgres branch resource name. Obtain by running `databricks postgres list-branches {project-name}`, select the desired item from the output array and use its .name value. Requires the project resource name.
-  postgres_database:
-    description: Full Lakebase Postgres database resource name. Obtain by running `databricks postgres list-databases {branch-name}`, select the desired item from the output array and use its .name value. Requires the branch resource name.
-  postgres_project:
-    description: Full Lakebase Postgres project resource name. Obtain by running `databricks postgres list-projects`, select the desired item from the output array and use its .name value.
-
 resources:
   apps:
     app:
-      name: "facilityiq-app"
-      description: "A Databricks App powered by AppKit"
+      name: "facilityiq"
+      description: "FacilityIQ analyst app backed by Unity Catalog Delta tables"
       source_code_path: ./
-      # Needed for app-layer trust-score reruns against Foundation Model serving endpoints.
       user_api_scopes:
         - sql
-        - serving.serving-endpoints
 
       # The resources which this app has access to.
       resources:
@@ -26,19 +16,6 @@ resources:
           sql_warehouse:
             id: a4e1c80a2e8ea399
             permission: CAN_USE
-        - name: postgres
-          postgres:
-            branch: ${var.postgres_branch}
-            database: ${var.postgres_database}
-            permission: CAN_CONNECT_AND_CREATE
-        - name: trust-llm
-          serving_endpoint:
-            name: databricks-meta-llama-3-3-70b-instruct
-            permission: CAN_QUERY
-        - name: trust-llm-fallback
-          serving_endpoint:
-            name: databricks-meta-llama-3-1-8b-instruct
-            permission: CAN_QUERY
 
 targets:
   dev:
@@ -47,18 +24,9 @@ targets:
     workspace:
       host: https://dbc-9924376b-eaa9.cloud.databricks.com
       root_path: ~/.bundle/${bundle.name}/dev
-    variables:
-      postgres_branch: projects/facilityiq/branches/production
-      postgres_database: projects/facilityiq/branches/production/databases/databricks-postgres
-      postgres_project: projects/facilityiq
 
   prod:
     mode: production
     workspace:
       host: https://dbc-9924376b-eaa9.cloud.databricks.com
       root_path: /Workspace/prod/${bundle.name}
-
-    variables:
-      postgres_branch: projects/facilityiq/branches/production
-      postgres_database: projects/facilityiq/branches/production/databases/databricks-postgres
-      postgres_project: projects/facilityiq

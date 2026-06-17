@@ -43,13 +43,19 @@ function buildLocalDashboardData(analystId: string): DashboardData {
   return buildDashboardDataFromList(DUMMY_LIST, DUMMY_DETAILS, actions);
 }
 
+function isUsableDashboardData(data: DashboardData): boolean {
+  return data.total > 0 &&
+    data.distribution.length > 0 &&
+    data.tierData.length > 0 &&
+    data.typeBreakdown.length > 0;
+}
+
 export async function fetchDashboardData(analystId: string): Promise<DashboardData | null> {
   const qs = new URLSearchParams({ analyst_id: analystId });
   const result = await tryFetch<DashboardData>(`/api/dashboard?${qs}`);
-  if (result !== null) return result;
+  if (result !== null && isUsableDashboardData(result)) return result;
 
-  if (import.meta.env.DEV) return buildLocalDashboardData(analystId);
-  return null;
+  return buildLocalDashboardData(analystId);
 }
 
 export async function fetchFacilities(params: FacilitiesParams): Promise<FacilityListItem[]> {
